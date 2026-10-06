@@ -10,6 +10,8 @@ Methods compared per joint and angle:
   DQS        Armature modifier with Preserve Volume (dual quaternion)
   LBS+CS     LBS followed by Corrective Smooth: a stand-in for what a baked
              pose-driven corrective shape can achieve (it can be baked to one)
+  CoR        Optimized Centers of Rotation skinning (Le & Hodgins 2016), see cor.py
+  CoR+CS     CoR followed by Corrective Smooth
 """
 import math
 import os
@@ -18,6 +20,11 @@ import sys
 import addon_utils
 import bpy
 from mathutils import Matrix, Vector
+
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cor as corlib  # noqa: E402
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = os.path.abspath(argv[0] if argv else "spikeB_out")
@@ -144,7 +151,87 @@ TESTS = [
     ("hip", hip, [45, 90, 120], lat * 1.0 + fwd * 0.5 + Vector((0, 0, 0.1)), "thigh", "head", 0.7),
     ("knee", knee, [45, 100, 150], lat * 1.0 + fwd * 0.2, "calf", "head", 0.5),
 ]
-METHODS = [("LBS", False, False), ("DQS", True, False), ("LBS+CS", False, True)]
+METHODS = [("LBS", False, False), ("DQS", True, False), ("LBS+CS", False, True), ("CoR", None, False), ("CoR+CS", None, True)]
+
+# --- CoR: a static copy of the body whose "posed" shape key we fill in ourselves ---
+mask_mod = next(m for m in basemesh.modifiers if m.type == "MASK")
+body_vg = basemesh.vertex_groups[mask_mod.vertex_group]
+corobj = basemesh.copy()
+corobj.data = basemesh.data.copy()
+scene_coll = bpy.context.scene.collection
+scene_coll.objects.link(corobj)
+corobj.modifiers.remove(corobj.modifiers[arm_mod.name])
+bpy.context.view_layer.objects.active = corobj
+for o in bpy.context.view_layer.objects:
+    o.select_set(o == corobj)
+if corobj.data.shape_keys:
+    bpy.ops.object.shape_key_remove(all=True, apply_mix=True)  # rest = the mixed default body
+corobj.shape_key_add(name="Basis")
+posed_key = corobj.shape_key_add(name="posed")
+posed_key.value = 1.0
+cor_cs = corobj.modifiers["CorrectiveSmooth"]
+
+Mw = np.array(corobj.matrix_world)
+rest_local = np.array([v.co for v in corobj.data.vertices])
+rest = (np.c_[rest_local, np.ones(len(rest_local))] @ Mw.T)[:, :3]
+deform_bones = [b.name for b in arm.data.bones if b.use_deform]
+bidx = {n: k for k, n in enumerate(deform_bones)}
+Wts = np.zeros((len(rest), len(deform_bones)))
+in_body = np.zeros(len(rest), bool)
+for v in corobj.data.vertices:
+    for ge in v.groups:
+        gname = corobj.vertex_groups[ge.group].name
+        if gname in bidx:
+            Wts[v.index, bidx[gname]] = ge.weight
+        if ge.group == body_vg.index and ge.weight > 0:
+            in_body[v.index] = True
+in_body = in_body if not mask_mod.invert_vertex_group else ~in_body
+Wts /= np.maximum(Wts.sum(1, keepdims=True), 1e-9)
+
+cache = os.path.join(OUT, f"cor_{RIG}.npz")
+if os.path.exists(cache):
+    cor_pts = np.load(cache)["cor"]
+else:
+    polys = [p for p in corobj.data.polygons if all(in_body[i] for i in p.vertices)]
+    fc = np.array([(Mw @ np.r_[np.array(p.center), 1])[:3] for p in polys])
+    fa = np.array([p.area for p in polys])
+    fw = np.array([Wts[list(p.vertices)].mean(0) for p in polys])
+    import time
+    t0 = time.time()
+    cor_pts, _ = corlib.precompute(rest, Wts, fc, fa, fw)
+    print(f"CoR precompute: {time.time() - t0:.1f}s over {len(polys)} faces")
+    np.savez(cache, cor=cor_pts)
+
+
+def skin_mats():
+    A = np.array(arm.matrix_world)
+    return np.array([A @ np.array(arm.pose.bones[n].matrix) @ np.linalg.inv(np.array(arm.data.bones[n].matrix_local)) @ np.linalg.inv(A)
+                     for n in deform_bones])
+
+
+def set_posed(world_pts):
+    local = (np.c_[world_pts, np.ones(len(world_pts))] @ np.linalg.inv(Mw).T)[:, :3]
+    posed_key.data.foreach_set("co", local.ravel())
+    corobj.data.update()
+
+
+def check_lbs():
+    """Our numpy LBS must match Blender's armature deform, or the CoR column isn't a fair comparison."""
+    arm_mod.use_deform_preserve_volume = False
+    cs.show_viewport = False
+    sub.show_viewport = False
+    bpy.context.view_layer.update()
+    deps = bpy.context.evaluated_depsgraph_get()
+    ev = basemesh.evaluated_get(deps).to_mesh()
+    theirs = np.array([v.co for v in ev.vertices])
+    basemesh.evaluated_get(deps).to_mesh_clear()
+    sub.show_viewport = True
+    keep = np.nonzero(in_body)[0]
+    ours = corlib.lbs(rest, Wts, skin_mats())[keep]
+    theirs = (np.c_[theirs, np.ones(len(theirs))] @ np.array(basemesh.matrix_world).T)[:, :3]
+    print("LBS check, max error (m):", np.abs(ours - theirs[: len(keep)]).max() if len(theirs) == len(keep) else "count mismatch",
+          len(theirs), len(keep))
+
 
 # --- render setup: Workbench, studio light, cavity, shadows ---
 scene = bpy.context.scene
@@ -179,9 +266,18 @@ for label, fn, angles, view, bone_key, end, ortho in TESTS:
         fn(a)
         pb = arm.pose.bones[names[bone_key]]
         focus = W @ pb.head
+        if label == "elbow" and a == 100:
+            check_lbs()
+        set_posed(corlib.deform_cor(rest, Wts, skin_mats(), cor_pts))
         for mname, dq, use_cs in METHODS:
-            arm_mod.use_deform_preserve_volume = dq
-            cs.show_render = cs.show_viewport = use_cs
+            is_cor = dq is None
+            basemesh.hide_render = is_cor
+            corobj.hide_render = not is_cor
+            if is_cor:
+                cor_cs.show_render = cor_cs.show_viewport = use_cs
+            else:
+                arm_mod.use_deform_preserve_volume = dq
+                cs.show_render = cs.show_viewport = use_cs
             frame(view, focus, ortho)
             scene.render.filepath = os.path.join(OUT, f"{label}_{a}_{mname}.png")
             bpy.ops.render.render(write_still=True)
@@ -189,6 +285,8 @@ for label, fn, angles, view, bone_key, end, ortho in TESTS:
 
 # rest pose reference
 reset()
+corobj.hide_render = True
+basemesh.hide_render = False
 arm_mod.use_deform_preserve_volume = False
 cs.show_render = False
 frame(fwd, (head("up") + head("up_l")) / 2 + Vector((0, 0, -0.6)), 2.0)
