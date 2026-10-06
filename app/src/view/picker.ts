@@ -11,7 +11,7 @@ const LAYER = 7;
 
 const vertex = /* glsl */ `
 attribute float pickId;
-varying float vId;
+flat varying float vId; // flat: bone ids must not be interpolated across a triangle
 varying float vDepth;
 #include <common>
 #include <skinning_pars_vertex>
@@ -24,7 +24,7 @@ void main() {
   vDepth = -mvPosition.z;
 }`;
 const fragment = /* glsl */ `
-varying float vId;
+flat varying float vId; // flat: bone ids must not be interpolated across a triangle
 varying float vDepth;
 void main() { gl_FragColor = vec4(vId + 1.0, vDepth, 0.0, 1.0); }`;
 
