@@ -19,6 +19,7 @@
     background: #fff2; color: #fff; font: inherit; font-weight: 600; touch-action: manipulation; }
   #bar button.on { background: #e8a33d; color: #222; }
   #bar button:disabled { opacity: .35; }
+  #bar button[hidden] { display: none; }
   #help { position: fixed; inset: 0; background: #000c; padding: 24px; display: none; overflow: auto; }
   #help.show { display: block; }
   #help li { margin: .4em 0; }
@@ -27,7 +28,7 @@
 <body>
 <div id="hud"><span id="fps">– fps</span><span id="sel">Tap the arm</span></div>
 <div id="bar">
-  <button id="undo">Undo</button><button id="redo">Redo</button>
+  <button id="done" class="on" hidden>Done</button><button id="undo">Undo</button><button id="redo">Redo</button>
   <button id="limits" class="on">Limits</button><button id="hold" class="on">Hold hand</button>
   <button id="lens">50mm</button><button id="reset">Reset</button><button id="helpBtn">?</button>
 </div>
@@ -36,7 +37,7 @@
   <ul>
     <li><b>Tap</b> a part of the arm to select it.</li>
     <li><b>Drag</b> a part to pull it (IK). Dragging the hand moves the whole arm; dragging the forearm bends the elbow; dragging the upper arm swings the shoulder.</li>
-    <li><b>Long-press</b> a part to show rotation rings for its joint, then drag a ring to rotate around that axis.</li>
+    <li><b>Long-press</b> a part to show rotation rings for its joint, then drag a ring to rotate around that axis. Put the rings away with <b>Done</b>, by tapping the part again, or by tapping empty space.</li>
     <li><b>One finger</b> on empty space orbits. <b>Two fingers</b> pinch to zoom and drag to pan.</li>
     <li>S Pen: hover highlights; holding the side button while dragging orbits.</li>
     <li><b>Limits</b> toggles anatomical joint limits. <b>Hold hand</b>: the hand keeps its angle in the world while you drag it.</li>

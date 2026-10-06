@@ -111,7 +111,12 @@ What I learned building it, before your phone test:
 - **Limits with swing/twist decomposition behave sensibly.** Shoulder swing is limited per direction (180° forward and outward, 60° back, 40° across the body), the elbow is a hinge plus forearm twist, and the wrist is a two-axis tilt. With "hold hand" on, the wrist hits its limits a lot, so the hand's twist is handed to the forearm, which is anatomically right.
 - **Desktop Chrome runs it at 120–140 fps.** That tells us nothing about the Note 9; the real number has to come from your phone.
 
-**I need your reactions on the phone:**
+**Your phone test (2026-10-06):** "all feels great".
+
+- **Fixed:** there was no obvious way out of rotation rings. Tapping empty space was meant to close them, but real finger jitter registered as an orbit. Taps now get 10 px of slack. Tapping the part again also closes the rings, and a **Done** button appears while rings are up.
+- **S Pen:** hover and the side button didn't work on your (battered) pen. Pen input still works as an ordinary pointer. Revisit when a working pen can show what Chrome on the Note 9 actually reports.
+
+Still open from the original list:
 
 1. Does selection land where you mean?
 2. Does your finger hide what you're posing?

@@ -444,6 +444,7 @@ let holdHand = true;
 function select(j: JointName | null, rings: boolean) {
   selected = j;
   ringJoint = rings ? j : null;
+  $('done').hidden = !ringJoint;
   refreshHighlight();
 }
 
@@ -528,7 +529,8 @@ function endPointer(e: PointerEvent) {
   pointers.delete(e.pointerId);
   if (g.kind === 'pending' && g.id === e.pointerId) {
     clearTimeout(g.timer);
-    select(g.hit.object.userData.joint, ringJoint === g.hit.object.userData.joint);
+    // Tapping the part whose rings are showing puts them away
+    select(g.hit.object.userData.joint, false);
   } else if (g.kind === 'orbit' && !hadTwoFingers) {
     // A tap on empty space deselects
     if (e.type === 'pointerup' && !moved) select(null, false);
@@ -544,7 +546,11 @@ function endPointer(e: PointerEvent) {
   }
 }
 let moved = false;
-canvas.addEventListener('pointermove', e => { if (pointers.has(e.pointerId) && g.kind === 'orbit') moved = true; });
+let downAt = { x: 0, y: 0 };
+canvas.addEventListener('pointerdown', e => { if (pointers.size === 1) downAt = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointermove', e => {
+  if (pointers.has(e.pointerId) && g.kind === 'orbit' && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 10) moved = true;
+});
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch' && hovered) { hovered = null; refreshHighlight(); } });
@@ -580,6 +586,7 @@ $('lens').onclick = () => {
 };
 $('reset').onclick = () => { const before = snap(); apply(REST); commit(before); };
 const help = document.getElementById('help')!;
+$('done').onclick = () => select(selected, false);
 $('helpBtn').onclick = () => help.classList.add('show');
 help.onclick = () => help.classList.remove('show');
 refreshBar();
