@@ -82,8 +82,9 @@ export class PoseRig {
   resetContinuity() { this.lastIdeal.clear(); }
 
   // ---------- two-bone limb IK ----------
-  /** Bring the point `reach` along the lower bone to `target`. */
-  solveLimb(limb: Limb, target: Vector3, reach: number) {
+  /** Bring the point `reach` along the lower bone to `target`. `poleHint` (world direction) says which way
+   *  the elbow/knee should point; without it, a relaxed default is used. */
+  solveLimb(limb: Limb, target: Vector3, reach: number, poleHint?: Vector3) {
     const fig = this.fig;
     fig.group.updateMatrixWorld(true);
     const S = this.worldPos(limb.upper);
@@ -110,7 +111,7 @@ export class PoseRig {
 
     // Relaxed swivel: elbows hang down/out/back, knees point forward.
     const isLeg = limb.flex.z < 0;
-    const relaxedWorld = isLeg ? new Vector3(0.15 * limb.side, -0.1, 1) : new Vector3(0.4 * limb.side, -1, -0.12);
+    const relaxedWorld = poleHint?.clone() ?? (isLeg ? new Vector3(0.15 * limb.side, -0.1, 1) : new Vector3(0.4 * limb.side, -1, -0.12));
     // (pole = the side the joint bulges toward; the limb folds away from it)
     let ref = relaxedWorld.clone().addScaledVector(dir, -relaxedWorld.dot(dir));
     if (ref.lengthSq() < 1e-6) ref = new Vector3(0, 0, isLeg ? 1 : -1).addScaledVector(dir, -dir.z);

@@ -3,7 +3,9 @@ import { UI } from './ui/ui';
 
 async function main() {
   const app = await App.create(document.getElementById('stage')!, './assets/body');
-  const ui = new UI(app);
+  // ?bare: no controls, for regression renders
+  const bare = new URLSearchParams(location.search).has('bare');
+  const ui = bare ? { say: (t: string) => console.warn(t) } : new UI(app);
   try { await app.loadFromHash(); } catch (e) { ui.say(`Couldn't open that link: ${(e as Error).message}`); }
   document.getElementById('loading')!.remove();
   app.stage.start();

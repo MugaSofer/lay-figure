@@ -25,11 +25,14 @@ const LIMB = (s: LimitSpec) => s;
 export const LIMITS: Record<string, LimitSpec> = {
   // arms
   clavicle: LIMB({ swing: { up: 25, down: 8, forward: 18, back: 15 }, twist: [-5, 5] }),
-  upperarm: LIMB({ neutral: 'down', swing: { forward: 175, back: 60, out: 178, in: 45 }, twist: [-80, 80] }),
+  // Measured from a horizontal direction halfway between forward and out, so no reachable pose sits near
+  // the far pole (from "down", overhead was ~175 deg away and a slight inward lean read as "across").
+  // "forward" here means forward-and-across, "back" means out-and-behind.
+  upperarm: LIMB({ neutral: ['forward', 'out', 45], swing: { forward: 125, back: 95, up: 105, down: 100 }, twist: [-80, 80] }),
   lowerarm: LIMB({ neutral: 'parent', flexFromRest: true, swing: { forward: 150, back: 3, out: 4, in: 4 }, twist: [-85, 85] }),
   hand: LIMB({ swing: { in: 80, out: 70, forward: 25, back: 35 }, twist: [-5, 5] }),
   // legs
-  thigh: LIMB({ neutral: 'down', swing: { forward: 125, back: 30, out: 55, in: 30 }, twist: [-40, 40] }),
+  thigh: LIMB({ neutral: 'down', swing: { forward: 125, back: 30, out: 55, in: 30 }, twist: [-55, 55] }),
   calf: LIMB({ neutral: 'parent', flexFromRest: true, swing: { back: 150, forward: 3, out: 3, in: 3 }, twist: [-8, 8] }),
   foot: LIMB({ swing: { up: 25, down: 50, in: 25, out: 20 }, twist: [-15, 15] }),
   ball: LIMB({ swing: { up: 60, down: 30, in: 3, out: 3 }, twist: [-2, 2] }),

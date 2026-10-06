@@ -1,0 +1,102 @@
+{
+ "version": 1,
+ "figures": [
+  {
+   "body": {
+    "macros": {
+     "gender": 0.5,
+     "age": 0.5,
+     "muscle": 0.5,
+     "weight": 0.5,
+     "height": 0.5,
+     "proportions": 0.5,
+     "cupsize": 0.5,
+     "firmness": 0.5
+    },
+    "race": {
+     "african": 0.33,
+     "asian": 0.33,
+     "caucasian": 0.33
+    }
+   },
+   "pose": {
+    "skeleton": "makehuman-game_engine",
+    "version": 1,
+    "root": {
+     "pos": [
+      0,
+      0,
+      0
+     ],
+     "rot": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    "joints": {
+     "upperarm_l": [
+      0.10035,
+      0.33106,
+      -0.27778,
+      0.89619
+     ],
+     "lowerarm_l": [
+      -0.35111,
+      0,
+      -0.0037,
+      0.93633
+     ],
+     "upperarm_r": [
+      -0.07683,
+      -0.60624,
+      0.1036,
+      0.78475
+     ],
+     "lowerarm_r": [
+      0.25653,
+      -0.00149,
+      -0.0031,
+      0.96653
+     ],
+     "head": [
+      0,
+      -0.08706,
+      -0.00409,
+      0.99619
+     ]
+    },
+    "pins": []
+   },
+   "hidden": []
+  }
+ ],
+ "props": [],
+ "lights": {
+  "key": {
+   "dir": [
+    -0.35885,
+    0.76255,
+    0.53827
+   ],
+   "intensity": 2.4
+  },
+  "ambient": 0.85
+ },
+ "camera": {
+  "target": [
+   0,
+   0.9,
+   0
+  ],
+  "radius": 4.2,
+  "theta": 0.35,
+  "phi": 1.45,
+  "focal": 50
+ },
+ "view": {
+  "mode": "shaded",
+  "limits": true
+ }
+}
