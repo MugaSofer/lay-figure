@@ -151,11 +151,20 @@ function wristTilts(q: Q) {
   const d = DOWN.clone().applyQuaternion(q);
   return { flex: Math.atan2(d.x, -d.y), dev: Math.atan2(d.z, -d.y) };
 }
+// The wrist is limited as a swing (the forearm owns twist). The swing is expressed as a rotation vector
+// (axis * angle), which is continuous, and clamped to an ellipse whose radii differ per direction.
 function clampWrist(q: Q): Q {
-  const { flex, dev } = wristTilts(q);
-  const f = clamp(flex, -70 * DEG, 80 * DEG), dv = clamp(dev, -35 * DEG, 20 * DEG);
-  const d = new V3(Math.tan(f), -1, Math.tan(dv)).normalize();
-  return new Q().setFromUnitVectors(DOWN, d); // the forearm owns twist; the wrist drops it
+  const { swing } = swingTwist(q, UP);
+  if (swing.w < 0) swing.set(-swing.x, -swing.y, -swing.z, -swing.w);
+  const half = Math.acos(clamp(swing.w, -1, 1));
+  const k = half > 1e-6 ? (2 * half) / Math.sin(half) : 2;
+  const flex = swing.z * k, dev = -swing.x * k; // rotation about Z tilts the hand toward the palm (+X)
+  const rf = flex >= 0 ? 80 * DEG : 70 * DEG, rd = dev >= 0 ? 20 * DEG : 35 * DEG;
+  const n = Math.hypot(flex / rf, dev / rd);
+  const sc = n > 1 ? 1 / n : 1;
+  const v = new V3(-dev * sc, 0, flex * sc);
+  const a = v.length();
+  return a < 1e-9 ? new Q() : new Q().setFromAxisAngle(v.divideScalar(a), a);
 }
 const clampers: Record<JointName, (q: Q) => Q> = { shoulder: clampShoulder, elbow: clampElbow, wrist: clampWrist };
 let limitHit = false;
@@ -173,10 +182,20 @@ const perp = (v: V3, axis: V3) => v.clone().addScaledVector(axis, -v.dot(axis));
 
 const NATURAL_ELBOW = new V3(-0.4, -1, -0.12).normalize(); // right arm: outward is -X
 
-// Rough torso volume (an elliptic cylinder) so the elbow doesn't swivel through the chest
-function elbowInBody(shoulderLocal: Q) {
-  const e = DOWN.clone().multiplyScalar(L1).applyQuaternion(wquat(shoulder.parent!).multiply(shoulderLocal)).add(wpos(shoulder));
-  return e.y > 0.75 && e.y < 1.5 && (e.x / 0.2) ** 2 + (e.z / 0.13) ** 2 < 1;
+// Approximate signed distance to the static body (capsules and spheres, possibly scaled).
+// Continuous, unlike a raycast, so pushing things out of the body doesn't make them jump.
+const tmpV = new V3();
+function bodySDF(p: V3) {
+  let best = Infinity;
+  for (const m of bodyMeshes) {
+    const prm = (m.geometry as THREE.BufferGeometry & { parameters: { radius: number; height?: number } }).parameters;
+    const h = (m.geometry.type === 'CapsuleGeometry' ? prm.height ?? 0 : 0) / 2;
+    const l = m.worldToLocal(tmpV.copy(p));
+    l.y -= clamp(l.y, -h, h);
+    const sc = Math.min(m.scale.x, m.scale.y, m.scale.z);
+    best = Math.min(best, (l.length() - prm.radius) * sc);
+  }
+  return best;
 }
 
 // Two-bone solve that brings the point `reach` along the forearm to `target`.
@@ -188,39 +207,42 @@ function solveArm(target: V3, reach: number) {
   const toT = target.clone().sub(S);
   const dist = clamp(toT.length(), Math.abs(L1 - reach) + 1e-4, L1 + reach - 1e-4);
   const dir = toT.normalize();
-  // Elbow swivel: keep where it was (continuity), drifting toward where a relaxed elbow points
-  // (down, back, a little out) so it self-corrects instead of getting stuck in odd swivels.
-  const natural = perp(NATURAL_ELBOW, dir);
-  const prev = perp(wpos(elbow).sub(S), dir);
-  const pole0 = natural.lengthSq() > 1e-6 ? natural.normalize() : prev.clone();
-  if (prev.lengthSq() > 1e-6 && natural.lengthSq() > 1e-6) pole0.lerp(prev.normalize(), 0.85);
-  if (pole0.lengthSq() < 1e-8) pole0.copy(perp(new V3(0, 0, -1), dir));
-  pole0.normalize();
+  // Elbow swivel. Choosing it from the elbow's position each frame flips when the arm straightens,
+  // so instead pick the swivel whose shoulder rotation is closest to last frame's, with a gentle
+  // pull toward a relaxed elbow (down, a little out) and penalties for limits and the body.
+  let ref = perp(NATURAL_ELBOW, dir);
+  if (ref.lengthSq() < 1e-6) ref = perp(new V3(0, 0, -1), dir);
+  ref.normalize();
   const cosA = clamp((L1 * L1 + dist * dist - reach * reach) / (2 * L1 * dist), -1, 1);
   const sinA = Math.sqrt(1 - cosA * cosA);
   const interior = Math.acos(clamp((L1 * L1 + reach * reach - dist * dist) / (2 * L1 * reach), -1, 1));
   const twist = elbowParams(elbow.quaternion).twist;
+  const prevQ = shoulder.quaternion.clone();
+  const Pinv = P.clone().invert();
 
   const candidate = (swivel: number) => {
-    const pole = pole0.clone().applyAxisAngle(dir, swivel);
+    const pole = ref.clone().applyAxisAngle(dir, swivel);
     const u = dir.clone().multiplyScalar(cosA).addScaledVector(pole, sinA); // upper-arm direction
     const yAx = u.clone().negate();
     const zAx = perp(pole.clone().negate(), u).normalize();
     const xAx = new V3().crossVectors(yAx, zAx);
     const world = new Q().setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAx, yAx, zAx));
-    return P.clone().invert().multiply(world);
+    return { q: Pinv.clone().multiply(world), elbowPos: S.clone().addScaledVector(u, L1) };
   };
-  let best = candidate(0);
-  if (limitsOn) {
-    for (let k = 0; k <= 18; k++) {
-      let found = false;
-      for (const s of k ? [k, -k] : [0]) {
-        const c = candidate(s * 10 * DEG);
-        if (clampShoulder(c).angleTo(c) < 0.5 * DEG && !elbowInBody(c)) { best = c; found = true; break; }
-      }
-      if (found) break;
-    }
-  }
+  const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+  const cost = (swivel: number) => {
+    const c = candidate(swivel);
+    const moved = c.q.angleTo(prevQ);
+    let v = 4 * moved * moved + 0.1 * Math.abs(wrapPi(swivel));
+    if (limitsOn) v += 4 * clampShoulder(c.q).angleTo(c.q);
+    const inside = 0.045 - bodySDF(c.elbowPos);
+    if (inside > 0) v += 8 * inside;
+    return { v, q: c.q };
+  };
+  let bestS = 0, bestV = Infinity;
+  for (let k = 0; k < 72; k++) { const r = cost(k * 5 * DEG); if (r.v < bestV) { bestV = r.v; bestS = k * 5 * DEG; } }
+  let best = cost(bestS).q;
+  for (let k = -5; k <= 5; k++) { const r = cost(bestS + k * DEG); if (r.v <= bestV) { bestV = r.v; best = r.q; } }
   setJoint('shoulder', best);
   setJoint('elbow', elbowQ(Math.PI - interior, twist));
 }
@@ -356,7 +378,7 @@ function refreshHighlight() {
 // ---------- gestures ----------
 type Gesture =
   | { kind: 'pending'; id: number; x0: number; y0: number; hit: THREE.Intersection; timer: number; slop: number }
-  | { kind: 'ik'; id: number; j: JointName; grabOffset: V3; reach: number; handWorld: Q | null; plane: V3 }
+  | { kind: 'ik'; id: number; j: JointName; grabOffset: V3; reach: number; handWorld: Q | null; plane: V3; twistGoal: number | null; margin: number; lastX?: number; lastY?: number }
   | { kind: 'ring'; id: number; j: JointName; axis: Axis; tangentPx: THREE.Vector2; radiusPx: number; last: THREE.Vector2 }
   | { kind: 'orbit'; id: number; lx: number; ly: number }
   | { kind: 'pinch'; dist: number; mid: THREE.Vector2 }
@@ -375,20 +397,39 @@ function beginIK(id: number, hit: THREE.Intersection) {
   const axisPt = jo.localToWorld(new V3(0, -along, 0));
   if (j === 'wrist') {
     const wp = wpos(wrist);
-    g = { kind: 'ik', id, j, grabOffset: hit.point.clone().sub(wp), reach: L2, handWorld: holdHand ? wquat(wrist) : null, plane: hit.point.clone() };
+    g = { kind: 'ik', id, j, grabOffset: hit.point.clone().sub(wp), reach: L2, handWorld: holdHand ? wquat(wrist) : null, plane: hit.point.clone(), twistGoal: null, margin: clamp(bodySDF(hit.point), 0, 0.05) };
   } else {
-    g = { kind: 'ik', id, j, grabOffset: hit.point.clone().sub(axisPt), reach: along, handWorld: null, plane: hit.point.clone() };
+    g = { kind: 'ik', id, j, grabOffset: hit.point.clone().sub(axisPt), reach: along, handWorld: null, plane: hit.point.clone(), twistGoal: null, margin: clamp(bodySDF(hit.point), 0, 0.05) };
   }
   select(j, false);
 }
+// Joints may turn at most this much per update. The IK keeps re-solving every frame while the finger is
+// down, so a big change (say the elbow switching sides at a limit) plays out as a quick swing, not a jump.
+const MAX_STEP = 15 * DEG;
 function moveIK(x: number, y: number) {
   if (g.kind !== 'ik') return;
-  let p = dragPoint(x, y, g.plane);
-  // The drag plane has no depth sense, so targets often land inside the body. If the body
-  // surface is nearer than the plane under the finger, put the target just in front of it.
-  const hitBody = rayAt(x, y).intersectObjects(bodyMeshes, false)[0];
-  if (hitBody && hitBody.distance < camera.position.distanceTo(p)) {
-    p = hitBody.point.clone().add(rayAt(x, y).ray.direction.clone().multiplyScalar(-0.06));
+  g.lastX = x; g.lastY = y;
+  const before = snap();
+  solveIK(x, y);
+  for (const j of Object.keys(joints) as JointName[]) {
+    const q = joints[j].quaternion, a = before[j].angleTo(q);
+    if (a > MAX_STEP) q.copy(before[j].slerp(q.clone(), MAX_STEP / a));
+  }
+}
+function solveIK(x: number, y: number) {
+  if (g.kind !== 'ik') return;
+  const p = dragPoint(x, y, g.plane);
+  // The drag plane has no depth sense, so targets often land inside the body. If the point under the
+  // finger is inside (or within a margin of) the body, slide it toward the camera until it's clear.
+  // Uses the smooth distance field, so the push grows from zero and nothing jumps at the silhouette.
+  // The margin never exceeds the clearance the grabbed point started with, so a drag never starts with a jump.
+  const MARGIN = g.margin;
+  if (bodySDF(p) < MARGIN) {
+    const back = rayAt(x, y).ray.direction.clone().negate();
+    let lo = 0, hi = 0.02;
+    while (hi < 0.8 && bodySDF(p.clone().addScaledVector(back, hi)) < MARGIN) { lo = hi; hi *= 1.6; }
+    for (let k = 0; k < 12; k++) { const mid = (lo + hi) / 2; if (bodySDF(p.clone().addScaledVector(back, mid)) < MARGIN) lo = mid; else hi = mid; }
+    p.addScaledVector(back, hi);
   }
   p.sub(g.grabOffset);
   limitHit = false;
@@ -407,7 +448,10 @@ function moveIK(x: number, y: number) {
       const local = wquat(elbow).invert().multiply(g.handWorld);
       const { angle } = swingTwist(local, UP);
       const { hinge, twist } = elbowParams(elbow.quaternion);
-      setJoint('elbow', elbowQ(hinge, twist + angle));
+      let goal = twist + angle;
+      if (g.twistGoal !== null) goal += 2 * Math.PI * Math.round((g.twistGoal - goal) / (2 * Math.PI));
+      g.twistGoal = goal;
+      setJoint('elbow', elbowQ(hinge, goal));
       figure.updateMatrixWorld(true);
       setJoint('wrist', wquat(elbow).invert().multiply(g.handWorld));
     }
@@ -495,7 +539,9 @@ canvas.addEventListener('pointermove', e => {
       if (g.id === e.pointerId && Math.hypot(x - g.x0, y - g.y0) > g.slop) {
         clearTimeout(g.timer);
         beginIK(g.id, g.hit);
-        moveIK(x, y);
+        // Measure the drag from here, not from touch-down, so the slop distance isn't applied in one jump
+        const gi = g as Gesture; // beginIK replaced it
+        if (gi.kind === 'ik') gi.grabOffset.add(dragPoint(x, y, gi.plane).sub(gi.plane));
       }
       break;
     case 'ik': if (g.id === e.pointerId) moveIK(x, y); break;
@@ -608,7 +654,14 @@ function describe(j: JointName) {
   return `Wrist\nflex ${(flex / DEG).toFixed(0)}°  dev ${(dev / DEG).toFixed(0)}°`;
 }
 let frames = 0, lastFps = performance.now();
+const motionLog: number[] = []; // per-frame joint motion in degrees (for the jitter test)
+let lastPose = snap();
 renderer.setAnimationLoop(() => {
+  if (g.kind === 'ik' && g.lastX !== undefined) moveIK(g.lastX, g.lastY!);
+  const pose = snap();
+  motionLog.push((Object.keys(pose) as JointName[]).reduce((m, j) => Math.max(m, pose[j].angleTo(lastPose[j]) / DEG), 0));
+  if (motionLog.length > 600) motionLog.shift();
+  lastPose = pose;
   updateRings();
   renderer.render(scene, camera);
   frames++;
@@ -627,4 +680,7 @@ const screenOf = (j: JointName, along = 0.5) => {
   const p = toScreen(joints[j].localToWorld(new V3(0, -along * boneLen[j], 0)));
   return { x: p.x, y: p.y };
 };
-(window as unknown as { spike: unknown }).spike = { joints, screenOf, ringJoint: () => ringJoint, describe: () => selEl.textContent };
+(window as unknown as { spike: unknown }).spike = {
+  pose: () => (Object.keys(joints) as JointName[]).map(j => joints[j].quaternion.toArray()),
+  reset: () => apply(REST), setLimits: (on: boolean) => { limitsOn = on; }, setHold: (on: boolean) => { holdHand = on; },
+  joints, screenOf, motion: (n: number) => motionLog.slice(-n), ringJoint: () => ringJoint, describe: () => selEl.textContent };
