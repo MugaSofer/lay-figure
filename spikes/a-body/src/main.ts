@@ -71,7 +71,14 @@ async function load() {
 function buildSliders() {
   const box = document.getElementById('sliders')!;
   box.innerHTML = '';
-  for (const [name, i] of Object.entries(mesh.morphTargetDictionary!)) {
+  const PRESETS = ['female', 'male', 'heavy', 'slim', 'muscular', 'soft', 'older', 'tall', 'short', 'idealised', 'larger-cup'];
+  const entries = Object.entries(mesh.morphTargetDictionary!)
+    .sort(([a], [b]) => (PRESETS.includes(a) ? PRESETS.indexOf(a) : 99) - (PRESETS.includes(b) ? PRESETS.indexOf(b) : 99));
+  const head = (t: string) => { const h = document.createElement('h4'); h.textContent = t; h.style.margin = '8px 0 2px'; box.appendChild(h); };
+  head('Body presets (MakeHuman macros)');
+  let localsShown = false;
+  for (const [name, i] of entries) {
+    if (!PRESETS.includes(name) && !localsShown) { head('Local modifiers'); localsShown = true; }
     const l = document.createElement('label');
     l.textContent = name;
     const r = document.createElement('input');
@@ -87,19 +94,42 @@ const setAll = (f: (i: number) => number) => {
   measure();
 };
 
-// A pose that bends joints under the morphs, to see skinning and morphs together (local bone axes, rough)
-const POSE: Record<string, [number, number, number]> = {
-  upperarm_r: [0, 0, -0.9], lowerarm_r: [0, 0, -1.4], upperarm_l: [0.6, 0, 0.4], lowerarm_l: [0, 0, 1.2],
-  thigh_r: [-1.2, 0, 0], calf_r: [1.6, 0, 0], spine_02: [0.25, 0, 0], neck_01: [0.2, 0.3, 0],
+// A pose built by aiming limbs at world directions (the figure faces +Z, its right side is -X).
+// Applied parent-first, so each aim sees the already-posed parent.
+const down = new THREE.Vector3(0, -1, 0);
+const dirOf = (deg: number, toward: THREE.Vector3, from = down) => {
+  const r = THREE.MathUtils.degToRad(deg);
+  return from.clone().multiplyScalar(Math.cos(r)).addScaledVector(toward, Math.sin(r)).normalize();
 };
+const X = new THREE.Vector3(1, 0, 0), Z = new THREE.Vector3(0, 0, 1);
+const POSE: [string, THREE.Vector3][] = [
+  ['upperarm_r', dirOf(15, X.clone().negate())],
+  ['lowerarm_r', dirOf(70, Z)],
+  ['upperarm_l', dirOf(130, X)],
+  ['lowerarm_l', dirOf(160, X.clone().add(Z).normalize())],
+  ['thigh_r', dirOf(70, Z)],
+  ['calf_r', dirOf(15, Z.clone().negate())],
+  ['thigh_l', dirOf(10, X)],
+];
 const restQ = new Map<THREE.Bone, THREE.Quaternion>();
+function aim(name: string, want: THREE.Vector3) {
+  const b = mesh.skeleton.getBoneByName(name);
+  const child = b?.children.find(c => (c as THREE.Bone).isBone);
+  if (!b || !child) return;
+  root!.updateMatrixWorld(true);
+  const p = b.getWorldPosition(new THREE.Vector3());
+  const cur = child.getWorldPosition(new THREE.Vector3()).sub(p).normalize();
+  const rot = new THREE.Quaternion().setFromUnitVectors(cur, want);
+  const world = rot.multiply(b.getWorldQuaternion(new THREE.Quaternion()));
+  const parentQ = b.parent!.getWorldQuaternion(new THREE.Quaternion());
+  b.quaternion.copy(parentQ.invert().multiply(world));
+}
 function applyPose() {
   for (const b of mesh.skeleton.bones) {
     if (!restQ.has(b)) restQ.set(b, b.quaternion.clone());
     b.quaternion.copy(restQ.get(b)!);
-    const p = POSE[b.name];
-    if (posed && p) b.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...p)));
   }
+  if (posed) for (const [name, dir] of POSE) aim(name, dir);
 }
 
 // Seam check: vertices split at UV seams share a base position; after stacking morphs they must stay together.

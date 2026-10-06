@@ -29,9 +29,40 @@ TARGETS = [
     "breast/breast-volume-vert-up", "breast/breast-trans-down", "buttocks/buttocks-volume-incr",
     "torso/torso-scale-horiz-incr", "neck/neck-scale-horiz-incr",
     "head/head-fat-incr", "head/head-age-incr", "head/head-oval",
-    # two dense "macro" targets, to measure what they cost
-    "macrodetails/caucasian-female-young", "macrodetails/caucasian-male-young",
 ]
+# Macro presets: MPFB evaluates MakeHuman's (non-linear) macro blend for each, and we store each
+# result as one dense shape relative to the default body. Blending presets linearly only
+# approximates MakeHuman's macro maths; fine for judging the body, not for the real app.
+PRESETS = {
+    "female": {"gender": 0.0}, "male": {"gender": 1.0},
+    "heavy": {"weight": 1.0}, "slim": {"weight": 0.0},
+    "muscular": {"muscle": 1.0}, "soft": {"muscle": 0.0},
+    "older": {"age": 0.875}, "tall": {"height": 1.0}, "short": {"height": 0.0},
+    "idealised": {"proportions": 1.0}, "larger-cup": {"cupsize": 1.0},
+}
+
+from bl_ext.user_default.mpfb.services.targetservice import TargetService as _TS  # noqa: E402
+
+
+def body_coords(macros):
+    """Vertex coordinates of a fresh human with the given macro settings, shape keys mixed in."""
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o, do_unlink=True)
+    info = _TS.get_default_macro_info_dict()
+    info.update(macros)
+    h = HumanService.create_human(scale=0.1, macro_detail_dict=info)
+    deps = bpy.context.evaluated_depsgraph_get()
+    for m in h.modifiers:
+        m.show_viewport = False
+    bpy.context.view_layer.update()
+    ev = h.evaluated_get(deps).to_mesh()
+    co = [v.co.copy() for v in ev.vertices]
+    h.evaluated_get(deps).to_mesh_clear()
+    return co
+
+
+default_co = body_coords({})
+preset_co = {name: body_coords(m) for name, m in PRESETS.items()}
 
 for o in list(bpy.data.objects):
     bpy.data.objects.remove(o, do_unlink=True)
@@ -50,7 +81,12 @@ for t in TARGETS:
         continue
     TargetService.load_target(basemesh, path, weight=0.0, name=t.split("/")[-1])
     loaded.append(t)
-print("loaded", len(loaded), "targets")
+for name, co in preset_co.items():
+    key = basemesh.shape_key_add(name=name, from_mix=False)
+    for i, (d, c) in enumerate(zip(default_co, co)):
+        key.data[i].co = basemesh.data.shape_keys.key_blocks["Basis"].data[i].co + (c - d)
+    key.value = 0.0
+print("loaded", len(loaded), "targets and", len(preset_co), "presets")
 
 arm = HumanService.add_builtin_rig(basemesh, "game_engine")
 
