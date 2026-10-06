@@ -26,6 +26,7 @@ jobs:
           mkdir -p site/spikes
           for d in spikes/*/; do
             n=$(basename "$d")
+            [ -f "$d/package.json" ] || continue  # Python/Blender-only spikes have nothing to deploy
             (cd "$d" && pnpm install --frozen-lockfile && pnpm build)
             cp -r "$d/dist" "site/spikes/$n"
           done
