@@ -6,6 +6,9 @@ async function main() {
   // ?bare: no controls, for regression renders
   const bare = new URLSearchParams(location.search).has('bare');
   const ui = bare ? { say: (t: string) => console.warn(t) } : new UI(app);
+  // Any uncaught error shows on screen: on a phone there's no console to read.
+  addEventListener('error', e => ui.say(`Error: ${e.message}`));
+  addEventListener('unhandledrejection', e => ui.say(`Error: ${(e.reason as Error)?.message ?? e.reason}`));
   try { await app.loadFromHash(); } catch (e) { ui.say(`Couldn't open that link: ${(e as Error).message}`); }
   document.getElementById('loading')!.remove();
   if (!app.figure.data.meta.localTargets) ui.say('An update is half-installed: close and reopen the app');

@@ -1,9 +1,18 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
+
+// Shown in the app (More sheet) so a phone's running build can be identified.
+const BUILD = (() => {
+  let hash = 'dev';
+  try { hash = execSync('git rev-parse --short HEAD').toString().trim(); } catch { /* not a git checkout */ }
+  return `${hash} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+})();
 import { VitePWA } from 'vite-plugin-pwa';
 
 // Assets live at the repo root (public/assets), shared with the pipeline's output.
 export default defineConfig({
   base: './',
+  define: { __BUILD__: JSON.stringify(BUILD) },
   publicDir: '../public',
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
   plugins: [

@@ -275,6 +275,7 @@ export class UI {
         h('li', { textContent: 'Limits keeps joints in anatomical range; turn it off for anything goes.' }),
       ),
       h('p', { cls: 'hint', innerHTML: 'Lay Figure · body: <a href="https://www.makehumancommunity.org" target="_blank" rel="noopener">MakeHuman</a> assets (CC0) · <a href="https://github.com/MugaSofer/lay-figure" target="_blank" rel="noopener">source</a>' }),
+      h('p', { cls: 'hint', textContent: `Version ${__BUILD__}` }),
     );
   }
 
@@ -294,10 +295,12 @@ export class UI {
     } catch { this.say('Link is in the address bar'); }
   }
 
-  say(text: string) {
+  private toastTimer = 0;
+  say(text: string, ms = /^(Error|Couldn)/.test(text) ? 8000 : 1800) {
     this.toast.textContent = text;
     this.toast.classList.add('show');
-    setTimeout(() => this.toast.classList.remove('show'), 1800);
+    clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toast.classList.remove('show'), ms);
   }
 }
 
