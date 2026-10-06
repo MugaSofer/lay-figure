@@ -57,13 +57,15 @@ const C = new Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
 const Cinv = C.clone().invert();
 const Y = new Vector3(0, 1, 0);
 
-/** World rotation of a bone at rest: local +Y runs head to tail; roll sets the twist, as Blender does. */
+/** World rotation of a bone at rest: local +Y runs head to tail; roll sets the twist, as Blender does.
+ *  The Blender matrix maps the bone's local axes into Blender's world; C then maps that into ours.
+ *  (The bone's local axes are its own, so this is C * M, not a change of basis C * M * C^-1.) */
 export function boneRestRotation(head: Vector3, tail: Vector3, roll: number) {
   const dirB = tail.clone().sub(head).applyMatrix4(Cinv).normalize(); // in Blender's frame
   const align = new Quaternion().setFromUnitVectors(Y, dirB);
   const rollQ = new Quaternion().setFromAxisAngle(dirB, roll);
   const mB = new Matrix4().makeRotationFromQuaternion(rollQ.multiply(align));
-  return new Quaternion().setFromRotationMatrix(C.clone().multiply(mB).multiply(Cinv));
+  return new Quaternion().setFromRotationMatrix(C.clone().multiply(mB));
 }
 
 export interface BoneRest { head: Vector3; tail: Vector3; rotation: Quaternion; length: number }

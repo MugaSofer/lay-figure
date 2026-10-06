@@ -26,6 +26,8 @@ export class Figure {
   private readonly restLocalQ: Quaternion[];
   private readonly restLocalP: Vector3[];
   private shapeSeq = 0;
+  /** Called after every rebuild (shape change): skeleton rebound, rests recomputed. */
+  readonly onRebuild: (() => void)[] = [];
 
   constructor(readonly data: BodyData, private readonly macros: MacroLibrary, material: Material) {
     const { meta } = data;
@@ -128,6 +130,7 @@ export class Figure {
     this.group.updateMatrixWorld(true);
     this.mesh.bind(this.mesh.skeleton?.bones.length ? this.mesh.skeleton : new Skeleton(this.bones));
     this.applyPose();
+    for (const f of this.onRebuild) f();
   }
 
   /** Push joint rotations and root offset onto the bones. */

@@ -2,6 +2,8 @@ import { MeshStandardMaterial } from 'three';
 import { loadBody, MacroLibrary } from './body/assets';
 import { Figure } from './body/figure';
 import { defaultMacros, SLIDERS, type MacroSettings } from './body/macros';
+import { PoseController } from './pose/controller';
+import { InputRouter } from './view/input';
 import { Stage } from './view/stage';
 
 const ASSETS = './assets/body';
@@ -18,6 +20,8 @@ async function main() {
   const macros: MacroSettings = defaultMacros();
   await figure.setMacros(macros);
   stage.fitShadow(figure.group);
+  const pose = new PoseController(figure, stage);
+  new InputRouter(stage, pose);
   status.textContent = '';
   stage.start();
 
@@ -31,7 +35,7 @@ async function main() {
     l.appendChild(r);
     panel.appendChild(l);
   }
-  Object.assign(window, { lay: { stage, figure, macros } });
+  Object.assign(window, { lay: { stage, figure, macros, pose } });
 }
 
 main().catch(e => {
