@@ -1,0 +1,25 @@
+# Raw downloads and anything adult never enter git (see brief: licensing, adult pack)
+assets-src/
+adult/
+**/adult/
+
+# Local-only notes for Claude sessions
+CLAUDE.local.md
+
+# Build output and deps
+node_modules/
+dist/
+.vite/
+__pycache__/
+*.pyc
+.venv/
+
+# Blender/DCC scratch
+*.blend1
+*.blend2
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

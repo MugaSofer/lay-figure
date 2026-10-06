@@ -1,0 +1,3 @@
+#!/bin/sh
+# Thin shim: the real check is Python so it runs the same on Windows and elsewhere.
+exec python "$(git rev-parse --show-toplevel)/.githooks/pre_commit.py"
