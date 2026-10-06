@@ -78,6 +78,42 @@ My read:
 - **CoR alone** creases oddly at the deep knee, so Corrective Smooth still earns its place.
 - **The wrist bent 70° toward the palm** is beaten by every method. That's a weighting problem: better weights (Anny's?) or one hand-sculpted shape.
 
+### Compound poses, several views
+
+You asked for more angles and viewpoints before locking this in, and you were right to. The sheets above test one joint at a time, mostly from one side.
+
+This set uses 14 compound poses close to the brief's regression scenes, each seen from three sides including the back, with the four contenders side by side. A hinge-aware posing helper keeps knees and elbows bending in their natural plane, so a bad pose can't masquerade as bad skinning.
+
+| Pose | Best | Notes |
+| --- | --- | --- |
+| Arms overhead | **CoR+CS** | DQS lumps at the shoulders and armpits; LBS thins the armpits; LBS+CS creases across the shoulder blades |
+| Deep crouch | **CoR+CS** | From behind, LBS flattens the buttocks and DQS balloons them |
+| Leg out sideways, leg back | **CoR+CS** (DQS close) | LBS creases hard at the groin and the buttock fold |
+| Head turn | **CoR+CS** | LBS+CS gives the neck odd cord-like ridges |
+| Forward reach | **LBS+CS** | From the side, CoR+CS puts a soft lump under the armpit, a milder version of DQS's |
+| Cross-legged sit | debatable | CoR+CS and DQS show a sharp horizontal crease across the lower belly; LBS+CS stays rounder |
+| Hand on hip, arms crossed, upper-arm twist in and out, forward bend, twist plus side bend, deep elbow, wrist extension | little difference | |
+
+![Arms overhead](B_ext_arms_overhead.jpg)
+![Forward reach](B_ext_reach_forward.jpg)
+![Arms crossed](B_ext_arms_crossed.jpg)
+![Hand on hip](B_ext_hand_on_hip.jpg)
+![Upper-arm twist, inward](B_ext_arm_twist_in.jpg)
+![Upper-arm twist, outward](B_ext_arm_twist_out.jpg)
+![Deep crouch](B_ext_deep_crouch.jpg)
+![Cross-legged](B_ext_cross_legged.jpg)
+![Leg out sideways](B_ext_leg_side.jpg)
+![Leg back](B_ext_leg_back.jpg)
+![Forward bend](B_ext_forward_bend.jpg)
+![Twist and side bend](B_ext_twist_sidebend.jpg)
+![Head turn](B_ext_head_turn.jpg)
+![Deep elbow](B_ext_elbow_deep.jpg)
+![Wrist extension](B_ext_wrist_ext.jpg)
+
+*Notes on the sheets: the hip and crouch poses keep the pelvis fixed, so the figure floats. Limbs pass through each other because there's no collision until M4. The light patches across shoulders are shadows cast by raised arms.*
+
+**Where that leaves it:** CoR+CS is still my pick on balance, but it isn't a clean sweep. It has two known weak spots, the armpit in a forward reach and the lower-belly crease when sitting cross-legged. The pipeline's corrective shapes would target exactly those. CoR also has a tuning knob (how widely each vertex's centre of rotation is averaged), and it can be blended back toward LBS per body region. Either could soften the armpit. I'd tune that in M1, against these same sheets.
+
 **Recommendation:**
 
 - **CoR skinning in the vertex shader.** It replaces Three.js's default LBS: one extra per-vertex attribute plus a custom skinning chunk.
@@ -111,7 +147,7 @@ On top of those, every joint is capped at 15° per update, and the IK re-solves 
 | --- | --- |
 | After the five fixes above | 22 of 1,998 |
 | Continuity measured against the solver's own unclamped answer (the solver and the limits had been fighting) | 8 of 1,998 |
-| The drift toward a relaxed elbow only acts while your finger moves | 0 of 456 on the paths that failed before (full re-run: FULL_RUN) |
+| The drift toward a relaxed elbow only acts while your finger moves | 0 of 456 on the paths that failed before (full re-run: 1 of 1,998, a slow 1° per frame glide with limits off) |
 
 No single frame now moves a joint more than about 21°, so there are no teleports.
 
