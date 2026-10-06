@@ -12,7 +12,7 @@ import { clampJoint, resolveLimit, specFor, swingTwist, type Limit } from './lim
 const Y = new Vector3(0, 1, 0);
 const FORWARD = new Vector3(0, 0, 1);
 
-export interface Limb { upper: number; lower: number; end: number; flex: Vector3; side: 1 | -1 }
+export interface Limb { upper: number; lower: number; end: number; flex: Vector3; side: 1 | -1; clavicle?: number }
 
 export class PoseRig {
   limits: (Limit | null)[] = [];
@@ -24,11 +24,16 @@ export class PoseRig {
   readonly trunk: number[];
   private lastIdeal = new Map<number, Quaternion>(); // per limb upper bone: last unclamped solution
   idle = false; // set while re-solving with a still finger: no drift toward the relaxed swivel
+  /** Raise and bring forward the collarbone automatically as the arm rises (scapulohumeral rhythm). */
+  shoulderRhythm = true;
 
   constructor(readonly fig: Figure) {
     const b = (n: string) => fig.boneIndex.get(n)!;
     const limb = (u: string, l: string, e: string, flex: Vector3, side: 1 | -1): Limb => ({ upper: b(u), lower: b(l), end: b(e), flex, side });
-    this.arms = { l: limb('upperarm_l', 'lowerarm_l', 'hand_l', FORWARD, 1), r: limb('upperarm_r', 'lowerarm_r', 'hand_r', FORWARD, -1) };
+    this.arms = {
+      l: { ...limb('upperarm_l', 'lowerarm_l', 'hand_l', FORWARD, 1), clavicle: b('clavicle_l') },
+      r: { ...limb('upperarm_r', 'lowerarm_r', 'hand_r', FORWARD, -1), clavicle: b('clavicle_r') },
+    };
     const BACK = FORWARD.clone().negate();
     this.legs = { l: limb('thigh_l', 'calf_l', 'foot_l', BACK, 1), r: limb('thigh_r', 'calf_r', 'foot_r', BACK, -1) };
     this.trunk = ['pelvis', 'spine_01', 'spine_02', 'spine_03', 'neck_01', 'head'].map(b);
@@ -81,11 +86,36 @@ export class PoseRig {
 
   resetContinuity() { this.lastIdeal.clear(); }
 
+  // ---------- shoulder rhythm ----------
+  /** As the upper arm rises past ~40 deg, about a third of further elevation comes from the shoulder girdle
+   *  (in this rig, the clavicle carries the shoulder blade's motion); reaching forward also brings it forward.
+   *  Measured in the torso's frame. armDir: where the upper arm is heading (world). */
+  applyShoulderRhythm(clavicle: number, armDir: Vector3) {
+    const fig = this.fig;
+    fig.group.updateMatrixWorld(true);
+    const parent = fig.data.meta.bones[clavicle].parent;
+    const torso = this.worldQuat(parent).multiply(fig.rests[parent].rotation.clone().invert()); // torso's turn from rest
+    const up = new Vector3(0, 1, 0).applyQuaternion(torso), fwd = new Vector3(0, 0, 1).applyQuaternion(torso);
+    const dir = armDir.clone().normalize();
+    const elevation = Math.acos(Math.min(1, Math.max(-1, -dir.dot(up))));
+    const lift = Math.min(Math.max(0.3 * (elevation - 0.7), 0), 0.61); // up to 35 deg
+    const forward = Math.min(Math.max(0.26 * dir.dot(fwd), 0), 0.26); // up to 15 deg
+    const base = this.worldFromJoint(clavicle, new Quaternion());
+    const d = Y.clone().applyQuaternion(base);
+    const liftAxis = new Vector3().crossVectors(d, up).normalize(), fwdAxis = new Vector3().crossVectors(d, fwd).normalize();
+    const R = new Quaternion().setFromAxisAngle(fwdAxis, forward).multiply(new Quaternion().setFromAxisAngle(liftAxis, lift));
+    this.setWorld(clavicle, R.multiply(base));
+  }
+
   // ---------- two-bone limb IK ----------
   /** Bring the point `reach` along the lower bone to `target`. `poleHint` (world direction) says which way
    *  the elbow/knee should point; without it, a relaxed default is used. */
   solveLimb(limb: Limb, target: Vector3, reach: number, poleHint?: Vector3) {
     const fig = this.fig;
+    if (limb.clavicle !== undefined && this.shoulderRhythm) {
+      fig.group.updateMatrixWorld(true);
+      this.applyShoulderRhythm(limb.clavicle, target.clone().sub(this.worldPos(limb.upper)));
+    }
     fig.group.updateMatrixWorld(true);
     const S = this.worldPos(limb.upper);
     const E0 = this.worldPos(limb.lower);

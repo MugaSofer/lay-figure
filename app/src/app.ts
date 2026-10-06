@@ -3,7 +3,7 @@
 import { DoubleSide, FrontSide, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
 import { loadBody, MacroLibrary } from './body/assets';
 import { Figure } from './body/figure';
-import { defaultMacros, RACES, SLIDERS, type MacroSettings } from './body/macros';
+import { defaultMacros, LOCAL_MODIFIERS, RACES, SLIDERS, type MacroSettings, type Slider } from './body/macros';
 import { REGIONS, type Region } from './body/regions';
 import {
   makePose, migrateScene, round, sceneFromHash, sceneToHash, SCENE_VERSION, validatePose, type Quat, type SceneData, type Vec3,
@@ -89,7 +89,7 @@ export class App {
 
   emit() { for (const f of this.changed) f(); }
 
-  async setMacro(key: keyof Omit<MacroSettings, 'race'>, v: number) {
+  async setMacro(key: Slider, v: number) {
     this.macros[key] = v;
     await this.figure.setMacros(this.macros);
     this.emit();
@@ -115,10 +115,12 @@ export class App {
     for (const k of SLIDERS) macros[k] = round(this.macros[k]);
     const race: Record<string, number> = {};
     for (const r of RACES) race[r] = round(this.macros.race[r]);
+    const local: Record<string, number> = {};
+    for (const m of LOCAL_MODIFIERS) { const v = this.macros.local?.[m.id] ?? 0; if (v) local[m.id] = round(v); }
     const keyDir = s.key.position.clone().sub(s.key.target.position).normalize();
     return {
       version: SCENE_VERSION,
-      figures: [{ body: { macros, race }, pose, hidden: [...f.hidden] }],
+      figures: [{ body: { macros, race, ...(Object.keys(local).length ? { local } : {}) }, pose, hidden: [...f.hidden] }],
       props: [],
       lights: { key: { dir: keyDir.toArray().map(round) as Vec3, intensity: round(s.key.intensity) }, ambient: round(s.ambient.intensity) },
       camera: { target: o.target.toArray().map(round) as Vec3, radius: round(o.radius), theta: round(o.theta), phi: round(o.phi), focal: round(s.focal) },
@@ -134,6 +136,7 @@ export class App {
     const before = this.pose.snapshot();
     for (const k of SLIDERS) if (typeof fd.body.macros[k] === 'number') this.macros[k] = fd.body.macros[k];
     for (const r of RACES) if (typeof fd.body.race?.[r] === 'number') this.macros.race[r] = fd.body.race[r];
+    this.macros.local = { ...(fd.body.local ?? {}) };
     await this.figure.setMacros(this.macros);
     this.applyPose(fd.pose.joints, fd.pose.root);
     this.figure.setHidden((fd.hidden ?? []).filter((r): r is Region => (REGIONS as readonly string[]).includes(r)));

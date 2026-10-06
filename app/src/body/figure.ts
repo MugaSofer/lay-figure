@@ -9,7 +9,7 @@ import {
 } from 'three';
 import { setCorEnabled, useCorSkinning } from './corSkinning';
 import type { BodyData, MacroLibrary } from './assets';
-import { macroStack, type MacroSettings } from './macros';
+import { bodyStack, type MacroSettings } from './macros';
 import { triangleRegions, visibleIndex, type Region } from './regions';
 import { applyTargets, boneRests, groundY, shapeNormals, shapeTriangles, type BoneRest } from './shape';
 
@@ -92,7 +92,7 @@ export class Figure {
   /** Reshape from macro settings. Resolves once the needed target packs are loaded and applied. */
   async setMacros(settings: MacroSettings) {
     const seq = ++this.shapeSeq;
-    const stack = macroStack(settings);
+    const stack = bodyStack(settings);
     const loaded = await this.macros.get([...stack.keys()]);
     if (seq !== this.shapeSeq) return; // a newer request superseded this one
     const pairs: [import('./assets').Target, number][] = [];

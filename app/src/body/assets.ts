@@ -25,6 +25,8 @@ export interface BodyMeta {
   ground: number[];
   macroPacks: Record<string, { file: string; offsets: number[]; bytes: number }>;
   macroTargets: Record<string, [string, number] | null>;
+  localPack: { file: string; offsets: number[]; bytes: number };
+  localTargets: Record<string, number>;
   cor: { boneLengths: number[] };
 }
 
@@ -94,7 +96,7 @@ export class MacroLibrary {
   private pack(age: string) {
     let p = this.packs.get(age);
     if (!p) {
-      const info = this.meta.macroPacks[age];
+      const info = age === 'local' ? this.meta.localPack : this.meta.macroPacks[age];
       const wide = this.meta.shapeVertexCount > 65535;
       p = this.fetcher.gz(`${this.base}/${info.file}`).then(buf => info.offsets.map(off => {
         const n = new DataView(buf).getUint32(off, true);
@@ -109,19 +111,29 @@ export class MacroLibrary {
     return p;
   }
 
-  /** Resolve target names to loaded targets (null for targets with no effect). */
+  private ref(n: string): [string, number] | null {
+    if (n.startsWith('local:')) {
+      const id = this.meta.localTargets[n.slice(6)];
+      if (id === undefined) throw new Error(`unknown local target ${n}`);
+      return ['local', id];
+    }
+    const ref = this.meta.macroTargets[n];
+    if (ref === undefined) throw new Error(`unknown macro target ${n}`);
+    return ref;
+  }
+
+  /** Resolve target names (macro paths, or "local:<path>") to loaded targets (null for targets with no effect). */
   async get(names: string[]): Promise<Map<string, Target | null>> {
     const out = new Map<string, Target | null>();
     const needed = new Set<string>();
     for (const n of names) {
-      const ref = this.meta.macroTargets[n];
-      if (ref === undefined) throw new Error(`unknown macro target ${n}`);
+      const ref = this.ref(n);
       if (ref) needed.add(ref[0]);
     }
     const loaded = new Map<string, Target[]>();
     await Promise.all([...needed].map(async a => loaded.set(a, await this.pack(a))));
     for (const n of names) {
-      const ref = this.meta.macroTargets[n];
+      const ref = this.ref(n);
       out.set(n, ref ? loaded.get(ref[0])![ref[1]] : null);
     }
     return out;

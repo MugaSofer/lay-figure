@@ -20,7 +20,7 @@ export interface PoseData {
   joints: Record<string, Quat>;
   pins: Pin[];
 }
-export interface BodyShape { macros: Record<string, number>; race: Record<string, number> }
+export interface BodyShape { macros: Record<string, number>; race: Record<string, number>; local?: Record<string, number> }
 export interface FigureData { body: BodyShape; pose: PoseData; hidden: string[] }
 export interface CameraData { target: Vec3; radius: number; theta: number; phi: number; focal: number }
 export interface SceneData {

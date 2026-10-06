@@ -24,7 +24,8 @@ const LIMB = (s: LimitSpec) => s;
 // Sided specs use out/in; the side is resolved per bone.
 export const LIMITS: Record<string, LimitSpec> = {
   // arms
-  clavicle: LIMB({ swing: { up: 25, down: 8, forward: 18, back: 15 }, twist: [-5, 5] }),
+  // includes the shoulder blade's motion, which this rig has no bone for
+  clavicle: LIMB({ swing: { up: 38, down: 8, forward: 20, back: 15 }, twist: [-5, 5] }),
   // Measured from a horizontal direction halfway between forward and out, so no reachable pose sits near
   // the far pole (from "down", overhead was ~175 deg away and a slight inward lean read as "across").
   // "forward" here means forward-and-across, "back" means out-and-behind.

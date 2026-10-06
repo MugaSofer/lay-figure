@@ -9,7 +9,12 @@ export interface MacroSettings {
   gender: number; age: number; muscle: number; weight: number;
   height: number; proportions: number; cupsize: number; firmness: number;
   race: Record<Race, number>;
+  /** Local modifiers by id (see LOCAL_MODIFIERS), -1..1; missing = 0. */
+  local?: Record<string, number>;
 }
+
+/** Sliders that may go past MakeHuman's range: the last level's shape is extrapolated. */
+export const EXTENDED_MAX: Partial<Record<Slider, number>> = { muscle: 1.5 };
 
 const LEVELS: Record<Slider, [string | null, number][]> = {
   gender: [['female', 0], ['male', 1]],
@@ -28,16 +33,18 @@ export function defaultMacros(): MacroSettings {
   return {
     gender: 0.5, age: 0.5, muscle: 0.5, weight: 0.5, height: 0.5, proportions: 0.5, cupsize: 0.5, firmness: 0.5,
     race: { african: 0.33, asian: 0.33, caucasian: 0.33 },
+    local: {},
   };
 }
 
 /** Level weights for one slider: at most two non-zero entries. The null level is "no target". */
 export function levelWeights(slider: Slider, value: number): [string | null, number][] {
   const levels = LEVELS[slider];
-  const v = 0.01 + 0.98 * Math.min(Math.max(value, 0), 1);
+  const v = 0.01 + 0.98 * Math.min(Math.max(value, 0), EXTENDED_MAX[slider] ?? 1);
   for (let i = 0; i < levels.length - 1; i++) {
     const [n0, p0] = levels[i], [n1, p1] = levels[i + 1];
-    if (v >= p0 && v <= p1) {
+    const last = i === levels.length - 2;
+    if (v >= p0 && (v <= p1 || last)) { // past the last level: extrapolate along the last segment
       const t = (v - p0) / (p1 - p0);
       return ([[n0, 1 - t], [n1, t]] as [string | null, number][]).filter(([, w]) => w > 0);
     }
@@ -80,4 +87,53 @@ export function yearsToAge(y: number) {
     if (y <= y1) return s0 + ((y - y0) / (y1 - y0)) * (s1 - s0);
   }
   return 1;
+}
+
+// ---------- local modifiers (MakeHuman's per-region targets) ----------
+export interface LocalModifier {
+  id: string; label: string; group: 'muscle' | 'fat';
+  /** target path with {s} for side (l and r both applied) and {d} for direction (decr/incr) */
+  target: string;
+  min: number; // 0 for one-directional modifiers
+}
+export const LOCAL_MODIFIERS: LocalModifier[] = [
+  { id: 'shoulders', label: 'Shoulders', group: 'muscle', target: 'arms/{s}-upperarm-shoulder-muscle-{d}', min: -1 },
+  { id: 'upperarms', label: 'Upper arms', group: 'muscle', target: 'arms/{s}-upperarm-muscle-{d}', min: -1 },
+  { id: 'forearms', label: 'Forearms', group: 'muscle', target: 'arms/{s}-lowerarm-muscle-{d}', min: -1 },
+  { id: 'chest', label: 'Chest', group: 'muscle', target: 'torso/torso-muscle-pectoral-{d}', min: -1 },
+  { id: 'lats', label: 'Back (lats)', group: 'muscle', target: 'torso/torso-muscle-dorsi-{d}', min: -1 },
+  { id: 'vshape', label: 'V-taper', group: 'muscle', target: 'torso/torso-vshape-{d}', min: -1 },
+  { id: 'abs', label: 'Stomach tone', group: 'muscle', target: 'stomach/stomach-tone-{d}', min: -1 },
+  { id: 'thighs', label: 'Thighs', group: 'muscle', target: 'legs/{s}-upperleg-muscle-{d}', min: -1 },
+  { id: 'calves', label: 'Calves', group: 'muscle', target: 'legs/{s}-lowerleg-muscle-{d}', min: -1 },
+  { id: 'fat-upperarms', label: 'Upper arms', group: 'fat', target: 'arms/{s}-upperarm-fat-{d}', min: -1 },
+  { id: 'fat-forearms', label: 'Forearms', group: 'fat', target: 'arms/{s}-lowerarm-fat-{d}', min: -1 },
+  { id: 'fat-thighs', label: 'Thighs', group: 'fat', target: 'legs/{s}-upperleg-fat-{d}', min: -1 },
+  { id: 'fat-calves', label: 'Calves', group: 'fat', target: 'legs/{s}-lowerleg-fat-{d}', min: -1 },
+  { id: 'buttocks', label: 'Buttocks', group: 'fat', target: 'buttocks/buttocks-volume-{d}', min: -1 },
+  { id: 'hips', label: 'Hip width', group: 'fat', target: 'hip/hip-scale-horiz-{d}', min: -1 },
+  { id: 'waist', label: 'Waist', group: 'fat', target: 'torso/measure-waist-circ-{d}', min: -1 },
+  { id: 'chin', label: 'Double chin', group: 'fat', target: 'neck/neck-double-{d}', min: -1 },
+  { id: 'pregnancy', label: 'Pregnancy', group: 'fat', target: 'stomach/stomach-pregnant-{d}', min: 0 },
+];
+
+/** Local targets and weights, named "local:<path>". Muscle past MakeHuman's maximum also ramps every
+ *  muscle group up, since the macro shape alone only goes so far. */
+export function localStack(s: MacroSettings): Map<string, number> {
+  const out = new Map<string, number>();
+  const boost = Math.max(0, s.muscle - 1) * 2; // 0 at MakeHuman's max, 1 at the extended max
+  for (const m of LOCAL_MODIFIERS) {
+    const v = (s.local?.[m.id] ?? 0) + (m.group === 'muscle' && m.id !== 'abs' ? boost : 0);
+    if (Math.abs(v) < 1e-3) continue;
+    const d = v > 0 ? 'incr' : 'decr';
+    for (const side of m.target.includes('{s}') ? ['l', 'r'] : ['']) {
+      out.set(`local:${m.target.replace('{s}', side).replace('{d}', d)}`, Math.abs(v));
+    }
+  }
+  return out;
+}
+
+/** Everything that shapes the body: macros and local modifiers. */
+export function bodyStack(s: MacroSettings): Map<string, number> {
+  return new Map([...macroStack(s), ...localStack(s)]);
 }

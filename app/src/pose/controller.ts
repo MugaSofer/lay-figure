@@ -228,9 +228,13 @@ export class PoseController implements PoseInput {
         if (d.hold) rig.holdEnd(d.limb, d.hold, d.twist, d.passTwist);
         break;
       }
-      case 'aim':
-        rig.aim(d.bone, this.dragPoint(x, y, d.plane).sub(d.grabOffset));
+      case 'aim': {
+        const target = this.dragPoint(x, y, d.plane).sub(d.grabOffset);
+        const arm = Object.values(rig.arms).find(a => a.upper === d.bone);
+        if (arm?.clavicle !== undefined && rig.shoulderRhythm) rig.applyShoulderRhythm(arm.clavicle, target.clone().sub(rig.worldPos(d.bone)));
+        rig.aim(d.bone, target);
         break;
+      }
       case 'chain': {
         const tipOf = () => fig.bones[d.tipBone].localToWorld(d.tipLocal.clone());
         rig.aimChain(d.chain, d.shares, tipOf, this.dragPoint(x, y, d.plane));

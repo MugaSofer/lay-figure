@@ -87,3 +87,28 @@
   - chain aim over-rotated
   - picked bone ids were interpolated across triangles (tapping the pelvis selected the toes)
   - `.gz` assets were double-decompressed on some servers
+
+## Round 2 (after your phone test)
+
+You reported a steady 60 fps on the Note 9, dropping to 40-50 while you drag body sliders. Changes since:
+
+- **Ancestry sliders fixed.** They were independent, so maxing one over-applied MakeHuman's ancestry shapes (166%). They're now a mix that always adds up to the whole.
+
+  ![Ancestry](ancestry.jpg)
+
+  *Default, then fully African, fully Asian and fully Caucasian; female above, male below.*
+
+- **More muscle.** The Muscle slider now runs to 150%. Past MakeHuman's own maximum (100%), the main shape keeps going in the same direction and MakeHuman's regional muscle shapes ramp in with it. New **Muscle by region** sliders (shoulders, upper arms, forearms, chest, lats, V-taper, stomach tone, thighs, calves) and **Fat and shape by region** sliders (upper arms, forearms, thighs, calves, buttocks, hip width, waist, double chin, pregnancy).
+
+  ![Muscle and fat](muscle-and-fat.jpg)
+
+  *Top: male at 100%, 125%, 150%, and 150% with low weight. Bottom: female at 100% and 150%, a pear shape, and a heavier waist with a double chin.*
+
+- **Raised arms: shoulder rhythm.** As the arm rises past about 40°, the collarbone now lifts with it (about 0.3° per degree, up to 35°) and comes forward on forward reaches, as the real shoulder girdle does. It runs in the arm IK and upper-arm drags. It helps, but the shoulder caps still look bolted on. That's the deformation, which the corrective shapes (next) are for.
+
+  ![Shoulder rhythm](shoulder-rhythm.jpg)
+
+  *Top: without the rhythm. Bottom: with it.*
+
+- **UI no longer covers the figure.** When a sheet is open, the view widens and shifts so the whole figure sits in the uncovered part of the screen (beside the sheet on desktop). Sheets are a little shorter on phones.
+- **Resets and undo.** *Reset body* (Body sheet and More), *Start over* (More). Undo/redo now covers body sliders and hidden parts too, not just the pose.

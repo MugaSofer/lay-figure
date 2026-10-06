@@ -25,8 +25,10 @@ describe('rig', () => {
   });
 
   it('limb IK reaches targets that a valid pose can reach', () => {
-    // Targets come from random poses within limits, so every one is reachable.
+    // Targets come from random poses within limits, so every one is reachable. This tests the two-bone
+    // solver itself, so the automatic shoulder rhythm (which moves the shoulder) is off.
     rig.limitsOn = true;
+    rig.shoulderRhythm = false;
     const errors: number[] = [];
     for (const limb of [rig.arms.l, rig.arms.r, rig.legs.l, rig.legs.r]) {
       for (let n = 0; n < 15; n++) {
@@ -48,6 +50,7 @@ describe('rig', () => {
     console.log(`IK miss: median ${(errors[errors.length >> 1] * 1000).toFixed(2)} mm, worst ${(errors[errors.length - 1] * 1000).toFixed(2)} mm`);
     expect(errors[errors.length >> 1]).toBeLessThan(0.0005);
     expect(errors[errors.length - 1]).toBeLessThan(0.002);
+    rig.shoulderRhythm = true;
   });
 
   it('reaches anatomically easy targets with limits on (not just ones generated through the limits)', () => {

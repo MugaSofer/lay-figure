@@ -1,6 +1,6 @@
 // The app's controls: a toolbar in thumb reach, bottom sheets for Body / View / More, a contextual bar for
 // the selected joint, and the HUD. Plain DOM; no framework.
-import { ageToYears, RACES, yearsToAge, type MacroSettings } from '../body/macros';
+import { ageToYears, EXTENDED_MAX, LOCAL_MODIFIERS, RACES, yearsToAge, type Slider } from '../body/macros';
 import { REGION_LABELS, REGIONS, type Region } from '../body/regions';
 import type { App } from '../app';
 import { FOCAL_RANGE } from '../view/stage';
@@ -25,11 +25,11 @@ function coalesce(fn: () => Promise<void>) {
   };
 }
 
-const BODY_SLIDERS: { key: keyof Omit<MacroSettings, 'race'>; label: string; ends?: [string, string] }[] = [
+const BODY_SLIDERS: { key: Slider; label: string; ends?: [string, string] }[] = [
   { key: 'gender', label: 'Sex', ends: ['female', 'male'] },
   { key: 'height', label: 'Height', ends: ['short', 'tall'] },
   { key: 'weight', label: 'Weight', ends: ['light', 'heavy'] },
-  { key: 'muscle', label: 'Muscle', ends: ['soft', 'muscular'] },
+  { key: 'muscle', label: 'Muscle', ends: ['soft', 'muscular · last third goes past MakeHuman'] },
   { key: 'proportions', label: 'Proportions', ends: ['uncommon', 'idealised'] },
   { key: 'cupsize', label: 'Breast size', ends: ['small', 'large'] },
   { key: 'firmness', label: 'Breast firmness', ends: ['soft', 'firm'] },
@@ -144,11 +144,11 @@ export class UI {
     const begin = () => { before ??= pose.snapshot(); };
     const reshape = coalesce(async () => { await app.figure.setMacros(m); app.emit(); });
     const end = () => { if (before) pose.commit(before); before = null; };
-    const set = (k: keyof Omit<MacroSettings, 'race'>) => (v: number) => { begin(); m[k] = v; void reshape(); };
+    const set = (k: Slider) => (v: number) => { begin(); m[k] = v; void reshape(); };
     this.sheet.append(h('div', { cls: 'sheet-head' }, h('h3', { textContent: 'Body' }),
       h('button', { textContent: 'Reset body', onclick: async () => { await app.resetBody(); this.reopen(); } })));
     this.sheet.append(this.slider('Age', 1, 90, 1, Math.round(ageToYears(m.age)), v => set('age')(yearsToAge(v)), v => `${v} yrs`, undefined, end));
-    for (const s of BODY_SLIDERS) this.sheet.append(this.slider(s.label, 0, 1, 0.01, m[s.key], set(s.key), undefined, s.ends, end));
+    for (const s of BODY_SLIDERS) this.sheet.append(this.slider(s.label, 0, EXTENDED_MAX[s.key] ?? 1, 0.01, m[s.key], set(s.key), undefined, s.ends, end));
     this.sheet.append(h('h4', { textContent: 'Ancestry mix (MakeHuman targets; always adds up to the whole)' }));
     const raceInputs: HTMLInputElement[] = [];
     for (const r of RACES) {
@@ -160,6 +160,16 @@ export class UI {
       }, undefined, undefined, end);
       raceInputs.push(row.querySelector('input')!);
       this.sheet.append(row);
+    }
+    for (const [group, title] of [['muscle', 'Muscle by region'], ['fat', 'Fat and shape by region']] as const) {
+      this.sheet.append(h('h4', { textContent: title }));
+      for (const mod of LOCAL_MODIFIERS.filter(x => x.group === group)) {
+        this.sheet.append(this.slider(mod.label, mod.min, 1, 0.01, m.local?.[mod.id] ?? 0, v => {
+          begin();
+          m.local = { ...(m.local ?? {}), [mod.id]: v };
+          void reshape();
+        }, v => (v > 0 ? '+' : '') + Math.round(v * 100) + '%', undefined, end));
+      }
     }
     this.sheet.append(h('h3', { textContent: 'Hide parts' }));
     const grid = h('div', { cls: 'chips' });

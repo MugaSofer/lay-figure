@@ -37,6 +37,26 @@ SCALE = 0.1  # decimetres -> metres
 QUANT = 1e-4  # target deltas stored as int16 multiples of 0.1 mm (range +-3.2 m)
 FORMAT_VERSION = 1
 
+# Local modifiers shipped with the body (both directions where MakeHuman has them). Sided targets are listed
+# once with "{s}" for l/r. Names are relative to targets/, without extension.
+LOCAL_TARGETS = [
+    "arms/{s}-upperarm-shoulder-muscle-{d}", "arms/{s}-upperarm-muscle-{d}", "arms/{s}-lowerarm-muscle-{d}",
+    "legs/{s}-upperleg-muscle-{d}", "legs/{s}-lowerleg-muscle-{d}",
+    "torso/torso-muscle-pectoral-{d}", "torso/torso-muscle-dorsi-{d}", "torso/torso-vshape-{d}", "stomach/stomach-tone-{d}",
+    "arms/{s}-upperarm-fat-{d}", "arms/{s}-lowerarm-fat-{d}", "legs/{s}-upperleg-fat-{d}", "legs/{s}-lowerleg-fat-{d}",
+    "buttocks/buttocks-volume-{d}", "hip/hip-scale-horiz-{d}", "torso/measure-waist-circ-{d}", "neck/neck-double-{d}",
+    "stomach/stomach-pregnant-{d}",
+]
+
+
+def expand_locals():
+    out = []
+    for t in LOCAL_TARGETS:
+        for s in (("l", "r") if "{s}" in t else ("",)):
+            for d in ("decr", "incr"):
+                out.append(t.format(s=s, d=d))
+    return out
+
 
 def body_faces(obj):
     return sorted(obj["groups"]["body"])
@@ -189,6 +209,23 @@ def build():
         cor_rel[v] = cor_pts[v] - head_def[bnear]
     print(f"CoR: {int(has_cor.sum())} of {nb} body vertices have a centre")
 
+    # --- local modifiers: one pack, loaded on demand ---
+    locals_ = []
+    local_index = {}
+    for r in expand_locals():
+        path = os.path.join(mh.DATA, "targets", r + ".target.gz")
+        if not os.path.exists(path):
+            continue
+        i, d = mh.load_target(r)
+        keep = np.array([v in src_to_shape for v in i], dtype=bool)
+        if not keep.any():
+            continue
+        si = np.array([src_to_shape[v] for v in i[keep]], dtype=np.uint32)
+        q = np.round(d[keep] * SCALE / QUANT).astype(np.int16)
+        o = np.argsort(si)
+        local_index[r] = len(locals_)
+        locals_.append((si[o], q[o]))
+
     os.makedirs(OUT, exist_ok=True)
     for f in os.listdir(OUT):
         os.remove(os.path.join(OUT, f))
@@ -217,7 +254,7 @@ def build():
     write_gz("body.bin", blob)
 
     pack_layout = {}
-    for age, items in packs.items():
+    for age, items in list(packs.items()) + [("local", locals_)]:
         # each target: uint32 count, uint32[count] indices (delta-coded as uint16 runs would be smaller,
         # but gzip on the wire already does well), int16[count*3] deltas
         b = bytearray()
@@ -242,7 +279,8 @@ def build():
         layout=layout, bones=bones, ground=ground_idx.tolist(),
         cor=dict(boneLengths=[round(float(x), 6) for x in len_def],
                  note="centre = bone head (current shape) + corOffset * (bone length now / boneLengths)"),
-        macroPacks=pack_layout, macroTargets=target_index,
+        macroPacks={k: v for k, v in pack_layout.items() if k != "local"}, macroTargets=target_index,
+        localPack=pack_layout["local"], localTargets=local_index,
     )
     json.dump(meta, open(os.path.join(OUT, "body.json"), "w"), separators=(",", ":"))
     sizes = {f: os.path.getsize(os.path.join(OUT, f)) for f in os.listdir(OUT)}
