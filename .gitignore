@@ -26,3 +26,6 @@ Thumbs.db
 
 # Design brief stays local (art director decision, 2026-10-06)
 Lay Figure — design brief.md
+
+# Personal Claude Code settings
+.claude/settings.local.json
