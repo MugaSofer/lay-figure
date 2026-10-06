@@ -15,13 +15,21 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEle
 };
 
 /** Run at most one async job at a time, always finishing with the latest request. */
-function coalesce(fn: () => Promise<void>) {
+/** A failed run is reported and doesn't wedge later ones (it used to leave `running` stuck true, which
+ *  silently disabled every slider after one error). */
+function coalesce(fn: () => Promise<void>, onError: (e: unknown) => void = e => console.error(e)) {
   let running = false, again = false;
   return async () => {
     if (running) { again = true; return; }
     running = true;
-    do { again = false; await fn(); } while (again);
-    running = false;
+    try {
+      do {
+        again = false;
+        try { await fn(); } catch (e) { onError(e); }
+      } while (again);
+    } finally {
+      running = false;
+    }
   };
 }
 
@@ -142,7 +150,7 @@ export class UI {
     // one undo step per slider drag: snapshot on the first change, commit on release
     let before: ReturnType<typeof pose.snapshot> | null = null;
     const begin = () => { before ??= pose.snapshot(); };
-    const reshape = coalesce(async () => { await app.figure.setMacros(m); app.emit(); });
+    const reshape = coalesce(async () => { await app.figure.setMacros(m); app.emit(); }, e => this.say(`Couldn't reshape: ${(e as Error).message}`));
     const end = () => { if (before) pose.commit(before); before = null; };
     const set = (k: Slider) => (v: number) => { begin(); m[k] = v; void reshape(); };
     this.sheet.append(h('div', { cls: 'sheet-head' }, h('h3', { textContent: 'Body' }),

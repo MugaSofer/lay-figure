@@ -29,6 +29,8 @@ export class Figure {
   private readonly restLocalQ: Quaternion[];
   private readonly restLocalP: Vector3[];
   private shapeSeq = 0;
+  /** Set when the loaded body data predates features the code uses (an update caught half-way). */
+  staleData = false;
   /** Called after every rebuild (shape change): skeleton rebound, rests recomputed. */
   readonly onRebuild: (() => void)[] = [];
   /** Called when the visible triangles change (hidden regions). */
@@ -93,6 +95,11 @@ export class Figure {
   async setMacros(settings: MacroSettings) {
     const seq = ++this.shapeSeq;
     const stack = bodyStack(settings);
+    if (!this.data.meta.localTargets) {
+      // body data from before regional modifiers (an app update caught half-way): shape without them
+      for (const k of [...stack.keys()]) if (k.startsWith('local:')) stack.delete(k);
+      this.staleData = true;
+    }
     const loaded = await this.macros.get([...stack.keys()]);
     if (seq !== this.shapeSeq) return; // a newer request superseded this one
     const pairs: [import('./assets').Target, number][] = [];
