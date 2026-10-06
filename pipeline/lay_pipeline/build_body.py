@@ -26,7 +26,9 @@ from collections import defaultdict
 
 import numpy as np
 
+from . import cor as corlib
 from . import makehuman as mh
+from .macros import DEFAULTS, macro_stack
 
 OUT = os.path.join(mh.REPO, "public", "assets", "body")
 RIG = "game_engine"
@@ -98,6 +100,8 @@ def build():
                           head=[src_to_shape[v] for v in b["head"]], tail=[src_to_shape[v] for v in b["tail"]],
                           roll=b["roll"]))
 
+    ground_idx = np.array([src_to_shape[v] for v in ground_vs])
+
     # --- render mesh: body faces, triangulated, split at UV seams ---
     key_to_render = {}
     render_shape, render_uv, tris = [], [], []
@@ -163,6 +167,28 @@ def build():
         seen[(age, h)] = [age, len(packs[age]) - 1]
         target_index[r] = seen[(age, h)]
 
+    # --- centres of rotation (CoR skinning), computed on the default body as the app builds it ---
+    default_full = mh.apply_targets(obj["positions"], macro_stack(DEFAULTS))
+    default_pos = default_full[shape_src] * SCALE
+    default_pos[:, 1] -= default_pos[ground_idx].mean(0)[1]  # floor at 0, as Figure.rebuild does
+    wdense = np.zeros((n_shape, len(bones)))
+    for k in range(MAX_INFLUENCES):
+        wdense[np.arange(n_shape), skin_i[:, k]] += skin_w[:, k]
+    nb = int(len(body_v))
+    cor_pts, has_cor = corlib.centres(default_pos[:nb], wdense[:nb], shape_tris.astype(np.int64))
+    head_def = np.array([default_pos[b["head"]].mean(0) for b in bones])
+    tail_def = np.array([default_pos[b["tail"]].mean(0) for b in bones])
+    len_def = np.linalg.norm(tail_def - head_def, axis=1)
+    # anchor: the influencing bone whose head (the joint) is nearest the centre; 255 = no centre needed
+    anchor = np.full(n_shape, 255, dtype=np.uint8)
+    cor_rel = np.zeros((n_shape, 3), dtype=np.float32)
+    for v in np.nonzero(has_cor)[0]:
+        infl = [int(skin_i[v, k]) for k in range(MAX_INFLUENCES) if skin_w[v, k] > 1e-4]
+        bnear = min(infl, key=lambda b: np.linalg.norm(head_def[b] - cor_pts[v]))
+        anchor[v] = bnear
+        cor_rel[v] = cor_pts[v] - head_def[bnear]
+    print(f"CoR: {int(has_cor.sum())} of {nb} body vertices have a centre")
+
     os.makedirs(OUT, exist_ok=True)
     for f in os.listdir(OUT):
         os.remove(os.path.join(OUT, f))
@@ -179,6 +205,8 @@ def build():
         ("uv", render_uv),
         ("skinIndex", skin_i),
         ("skinWeight", skin_w),
+        ("corAnchor", anchor),
+        ("corOffset", cor_rel),
     ]
     layout, blob = {}, bytearray()
     for name, a in arrays:
@@ -211,7 +239,9 @@ def build():
         shapeVertexCount=n_shape, bodyVertexCount=int(len(body_v)), renderVertexCount=int(len(render_shape)),
         triangleCount=int(len(index) // 3), quant=QUANT, maxInfluences=MAX_INFLUENCES,
         indexWidth=2 if n_shape <= 65535 else 4,
-        layout=layout, bones=bones, ground=[src_to_shape[v] for v in ground_vs],
+        layout=layout, bones=bones, ground=ground_idx.tolist(),
+        cor=dict(boneLengths=[round(float(x), 6) for x in len_def],
+                 note="centre = bone head (current shape) + corOffset * (bone length now / boneLengths)"),
         macroPacks=pack_layout, macroTargets=target_index,
     )
     json.dump(meta, open(os.path.join(OUT, "body.json"), "w"), separators=(",", ":"))

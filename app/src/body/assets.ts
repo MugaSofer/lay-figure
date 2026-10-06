@@ -25,6 +25,7 @@ export interface BodyMeta {
   ground: number[];
   macroPacks: Record<string, { file: string; offsets: number[]; bytes: number }>;
   macroTargets: Record<string, [string, number] | null>;
+  cor: { boneLengths: number[] };
 }
 
 export interface BodyData {
@@ -35,6 +36,8 @@ export interface BodyData {
   uv: Float32Array;
   skinIndex: Uint8Array; // shape space, maxInfluences per vertex
   skinWeight: Float32Array;
+  corAnchor: Uint8Array; // per shape vertex: bone whose head anchors its centre of rotation (255: none)
+  corOffset: Float32Array; // centre minus anchor head, on the default body (metres)
 }
 
 export interface Target {
@@ -78,6 +81,8 @@ export async function loadBody(base: string, fetcher: Fetcher = httpFetcher): Pr
     uv: view(buf, L.uv) as Float32Array,
     skinIndex: view(buf, L.skinIndex) as Uint8Array,
     skinWeight: view(buf, L.skinWeight) as Float32Array,
+    corAnchor: view(buf, L.corAnchor) as Uint8Array,
+    corOffset: view(buf, L.corOffset) as Float32Array,
   };
 }
 

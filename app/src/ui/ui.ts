@@ -169,6 +169,12 @@ export class UI {
       this.slider('Direction', -180, 180, 1, Math.round((az * 180) / Math.PI), v => { az = (v * Math.PI) / 180; place(); }, v => `${v}°`),
       this.slider('Height', 5, 85, 1, Math.round((el * 180) / Math.PI), v => { el = (v * Math.PI) / 180; place(); }, v => `${v}°`),
       this.slider('Ambient', 0, 2, 0.05, s.ambient.intensity, v => { s.ambient.intensity = v; }),
+      h('h3', { textContent: 'Skinning' }),
+      h('div', { cls: 'chips' }, ...(['cor', 'lbs'] as const).map(k => {
+        const b = h('button', { cls: 'chip' + ((k === 'cor') === this.app.figure.corSkinning ? ' on' : ''), textContent: k === 'cor' ? 'Centres of rotation' : 'Linear blend (classic)' });
+        b.onclick = () => { this.app.figure.setCorSkinning(k === 'cor'); this.toggleSheet('view'); this.toggleSheet('view'); };
+        return b;
+      })),
       h('button', { textContent: 'Reset camera', onclick: () => { Object.assign(s.orbit, { radius: 4.2, theta: 0.35, phi: 1.45 }); s.orbit.target.set(0, 0.95, 0); s.setFocal(50, false); s.updateCamera(); } }),
     );
   }

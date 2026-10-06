@@ -4,6 +4,7 @@ import {
   BufferAttribute, BufferGeometry, FloatType, HalfFloatType, NearestFilter, RGBAFormat, ShaderMaterial, SkinnedMesh, Vector2,
   Vector3, WebGLRenderTarget, type PerspectiveCamera, type WebGLRenderer,
 } from 'three';
+import { useCorSkinning } from '../body/corSkinning';
 import type { Figure } from '../body/figure';
 
 const LAYER = 7;
@@ -41,12 +42,13 @@ export class GpuPicker {
     this.buf = this.half ? new Uint16Array(4) : new Float32Array(4);
     const src = fig.mesh.geometry, { data } = fig, inf = data.meta.maxInfluences;
     const geo = new BufferGeometry();
-    for (const name of ['position', 'skinIndex', 'skinWeight']) geo.setAttribute(name, src.getAttribute(name));
+    for (const name of ['position', 'skinIndex', 'skinWeight', 'corPoint']) geo.setAttribute(name, src.getAttribute(name));
     geo.setIndex(src.getIndex());
     const ids = new Float32Array(data.meta.renderVertexCount);
     for (let r = 0; r < ids.length; r++) ids[r] = data.skinIndex[data.renderToShape[r] * inf];
     geo.setAttribute('pickId', new BufferAttribute(ids, 1));
     const mat = new ShaderMaterial({ vertexShader: vertex, fragmentShader: fragment });
+    useCorSkinning(mat); // pick the surface you see
     this.mesh = new SkinnedMesh(geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.layers.set(LAYER);

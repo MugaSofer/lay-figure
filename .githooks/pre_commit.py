@@ -12,9 +12,9 @@ FORBIDDEN_PARTS = ("/adult/",)
 RAW_EXTS = (".blend", ".fbx", ".bvh", ".c3d", ".obj", ".mhm", ".mhclo", ".zip", ".7z", ".rar")
 
 
-def staged():
+def staged(filt="ACMR"):
     out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+        ["git", "diff", "--cached", "--name-only", f"--diff-filter={filt}", "-z"],
         capture_output=True, check=True,
     ).stdout.decode("utf-8")
     return [p for p in out.split("\0") if p]
@@ -36,9 +36,10 @@ def main():
             problems.append(f"{p}: raw source format; convert via pipeline/ instead")
         elif blob_size(p) > MAX_BYTES:
             problems.append(f"{p}: {blob_size(p) / 1e6:.1f} MB exceeds {MAX_BYTES / 1e6:.0f} MB")
-    new_assets = [p for p in paths if p.startswith("public/assets/")]
+    # new asset files need an ASSETS.md entry; rebuilding already-logged ones doesn't
+    new_assets = [p for p in staged("A") if p.startswith("public/assets/")]
     if new_assets and "ASSETS.md" not in paths:
-        problems.append("public/assets/ changed but ASSETS.md is not staged; log licence + URL first")
+        problems.append(f"new files in public/assets/ ({new_assets[0]}...) but ASSETS.md is not staged; log licence + URL first")
     if problems:
         print("pre-commit: refusing commit:\n  " + "\n  ".join(problems), file=sys.stderr)
         return 1

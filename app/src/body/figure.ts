@@ -4,8 +4,10 @@
 // every body shape. Changing the shape re-derives the bones from the shaped mesh, rebinds the
 // skeleton, and re-applies the pose.
 import {
-  Bone, BufferAttribute, BufferGeometry, Group, Material, Quaternion, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3,
+  Bone, BufferAttribute, BufferGeometry, Group, Material, MeshDepthMaterial, Quaternion, RGBADepthPacking, Skeleton, SkinnedMesh,
+  Uint16BufferAttribute, Vector3,
 } from 'three';
+import { setCorEnabled, useCorSkinning } from './corSkinning';
 import type { BodyData, MacroLibrary } from './assets';
 import { macroStack, type MacroSettings } from './macros';
 import { triangleRegions, visibleIndex, type Region } from './regions';
@@ -45,6 +47,7 @@ export class Figure {
     const geo = new BufferGeometry();
     geo.setAttribute('position', new BufferAttribute(new Float32Array(n * 3), 3));
     geo.setAttribute('normal', new BufferAttribute(new Float32Array(n * 3), 3));
+    geo.setAttribute('corPoint', new BufferAttribute(new Float32Array(n * 3), 3));
     geo.setAttribute('uv', new BufferAttribute(data.uv, 2));
     const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
     for (let r = 0; r < n; r++) {
@@ -70,6 +73,10 @@ export class Figure {
     this.restLocalP = this.bones.map(() => new Vector3());
 
     this.mesh = new SkinnedMesh(geo, material);
+    useCorSkinning(material);
+    const depth = new MeshDepthMaterial({ depthPacking: RGBADepthPacking });
+    useCorSkinning(depth);
+    this.mesh.customDepthMaterial = depth;
     this.mesh.castShadow = this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = false; // bounds change with pose; the figure is always the subject
     this.group.add(this.mesh);
@@ -117,6 +124,17 @@ export class Figure {
 
     // Rest skeleton from this shape
     this.rests = boneRests(pos, meta.bones);
+
+    // Centres of rotation for CoR skinning: anchored to their joint, scaled with the bone's length
+    const C = geo.getAttribute('corPoint') as BufferAttribute, ca = C.array as Float32Array;
+    const { corAnchor, corOffset } = this.data, lens = meta.cor.boneLengths;
+    for (let r = 0; r < map.length; r++) {
+      const s = map[r], a = corAnchor[s], d = r * 3;
+      if (a === 255) { ca[d] = pos[s * 3]; ca[d + 1] = pos[s * 3 + 1]; ca[d + 2] = pos[s * 3 + 2]; continue; }
+      const h = this.rests[a].head, k = this.rests[a].length / (lens[a] || 1);
+      ca[d] = h.x + corOffset[s * 3] * k; ca[d + 1] = h.y + corOffset[s * 3 + 1] * k; ca[d + 2] = h.z + corOffset[s * 3 + 2] * k;
+    }
+    C.needsUpdate = true;
     meta.bones.forEach((b, i) => {
       const rest = this.rests[i];
       if (b.parent >= 0) {
@@ -153,6 +171,14 @@ export class Figure {
     this.joints.forEach(q => q.identity());
     this.rootOffset.set(0, 0, 0);
     this.applyPose();
+  }
+
+  /** Centres-of-rotation skinning (default) or plain linear blend skinning. */
+  corSkinning = true;
+  setCorSkinning(on: boolean) {
+    this.corSkinning = on;
+    setCorEnabled(this.mesh.material as Material, on);
+    if (this.mesh.customDepthMaterial) setCorEnabled(this.mesh.customDepthMaterial, on);
   }
 
   setHidden(regions: Iterable<Region>) {
