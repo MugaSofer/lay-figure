@@ -198,6 +198,11 @@ function bodySDF(p: V3) {
   return best;
 }
 
+let lastIdealShoulder: Q | null = null; // cleared when a drag starts
+// True for the per-frame re-solves while the finger is still: the drift toward a relaxed elbow only
+// happens while the finger moves, so the arm comes to rest when you stop.
+let idleSolve = false;
+
 // Two-bone solve that brings the point `reach` along the forearm to `target`.
 // The elbow keeps its current swivel if it can; otherwise it swings to the nearest swivel the limits allow.
 function solveArm(target: V3, reach: number) {
@@ -217,7 +222,9 @@ function solveArm(target: V3, reach: number) {
   const sinA = Math.sqrt(1 - cosA * cosA);
   const interior = Math.acos(clamp((L1 * L1 + reach * reach - dist * dist) / (2 * L1 * reach), -1, 1));
   const twist = elbowParams(elbow.quaternion).twist;
-  const prevQ = shoulder.quaternion.clone();
+  // Continuity is measured against the solver's own previous (unclamped) answer, not the clamped
+  // joint: comparing against the clamped pose made the solver and the limits fight each frame.
+  const prevQ = (lastIdealShoulder ?? shoulder.quaternion).clone();
   const Pinv = P.clone().invert();
 
   const candidate = (swivel: number) => {
@@ -233,7 +240,7 @@ function solveArm(target: V3, reach: number) {
   const cost = (swivel: number) => {
     const c = candidate(swivel);
     const moved = c.q.angleTo(prevQ);
-    let v = 4 * moved * moved + 0.1 * Math.abs(wrapPi(swivel));
+    let v = 4 * moved * moved + (idleSolve ? 0 : 0.1) * Math.abs(wrapPi(swivel));
     if (limitsOn) v += 4 * clampShoulder(c.q).angleTo(c.q);
     const inside = 0.045 - bodySDF(c.elbowPos);
     if (inside > 0) v += 8 * inside;
@@ -243,6 +250,7 @@ function solveArm(target: V3, reach: number) {
   for (let k = 0; k < 72; k++) { const r = cost(k * 5 * DEG); if (r.v < bestV) { bestV = r.v; bestS = k * 5 * DEG; } }
   let best = cost(bestS).q;
   for (let k = -5; k <= 5; k++) { const r = cost(bestS + k * DEG); if (r.v <= bestV) { bestV = r.v; best = r.q; } }
+  lastIdealShoulder = best.clone();
   setJoint('shoulder', best);
   setJoint('elbow', elbowQ(Math.PI - interior, twist));
 }
@@ -389,6 +397,7 @@ let gestureStart: Pose = snap();
 let hadTwoFingers = false;
 
 function beginIK(id: number, hit: THREE.Intersection) {
+  lastIdealShoulder = null;
   const j = hit.object.userData.joint as JointName;
   const jo = joints[j];
   figure.updateMatrixWorld(true);
@@ -657,7 +666,7 @@ let frames = 0, lastFps = performance.now();
 const motionLog: number[] = []; // per-frame joint motion in degrees (for the jitter test)
 let lastPose = snap();
 renderer.setAnimationLoop(() => {
-  if (g.kind === 'ik' && g.lastX !== undefined) moveIK(g.lastX, g.lastY!);
+  if (g.kind === 'ik' && g.lastX !== undefined) { idleSolve = true; moveIK(g.lastX, g.lastY!); idleSolve = false; }
   const pose = snap();
   motionLog.push((Object.keys(pose) as JointName[]).reduce((m, j) => Math.max(m, pose[j].angleTo(lastPose[j]) / DEG), 0));
   if (motionLog.length > 600) motionLog.shift();
@@ -682,5 +691,5 @@ const screenOf = (j: JointName, along = 0.5) => {
 };
 (window as unknown as { spike: unknown }).spike = {
   pose: () => (Object.keys(joints) as JointName[]).map(j => joints[j].quaternion.toArray()),
-  reset: () => apply(REST), setLimits: (on: boolean) => { limitsOn = on; }, setHold: (on: boolean) => { holdHand = on; },
+  reset: () => { apply(REST); lastPose = snap(); motionLog.length = 0; }, setLimits: (on: boolean) => { limitsOn = on; }, setHold: (on: boolean) => { holdHand = on; },
   joints, screenOf, motion: (n: number) => motionLog.slice(-n), ringJoint: () => ringJoint, describe: () => selEl.textContent };
