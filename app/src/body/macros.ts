@@ -13,7 +13,8 @@ export interface MacroSettings {
   local?: Record<string, number>;
 }
 
-/** Sliders that may go past MakeHuman's range: the last level's shape is extrapolated. */
+/** Sliders that may go past MakeHuman's range. Only muscle, and only its own shapes are extrapolated
+ *  (see macroStack); the height, proportion and breast families stay at their MakeHuman maximum. */
 export const EXTENDED_MAX: Partial<Record<Slider, number>> = { muscle: 1.5 };
 
 const LEVELS: Record<Slider, [string | null, number][]> = {
@@ -40,11 +41,10 @@ export function defaultMacros(): MacroSettings {
 /** Level weights for one slider: at most two non-zero entries. The null level is "no target". */
 export function levelWeights(slider: Slider, value: number): [string | null, number][] {
   const levels = LEVELS[slider];
-  const v = 0.01 + 0.98 * Math.min(Math.max(value, 0), EXTENDED_MAX[slider] ?? 1);
+  const v = 0.01 + 0.98 * Math.min(Math.max(value, 0), 1);
   for (let i = 0; i < levels.length - 1; i++) {
     const [n0, p0] = levels[i], [n1, p1] = levels[i + 1];
-    const last = i === levels.length - 2;
-    if (v >= p0 && (v <= p1 || last)) { // past the last level: extrapolate along the last segment
+    if (v >= p0 && v <= p1) {
       const t = (v - p0) / (p1 - p0);
       return ([[n0, 1 - t], [n1, t]] as [string | null, number][]).filter(([, w]) => w > 0);
     }
@@ -57,6 +57,8 @@ export function macroStack(s: MacroSettings): Map<string, number> {
   const W = Object.fromEntries(SLIDERS.map(k => [k, levelWeights(k, s[k])])) as Record<Slider, [string | null, number][]>;
   const out = new Map<string, number>();
   const add = (path: string, w: number) => { if (w >= CUTOFF) out.set(path, (out.get(path) ?? 0) + w); };
+  // signed add, for extrapolation (a negative weight subtracts a shape)
+  const addSigned = (path: string, w: number) => { if (Math.abs(w) >= CUTOFF) out.set(path, (out.get(path) ?? 0) + w); };
   for (const r of RACES) for (const [g, gw] of W.gender) for (const [a, aw] of W.age) add(`macrodetails/${r}-${g}-${a}`, s.race[r] * gw * aw);
   for (const [a, aw] of W.age) for (const [m, mw] of W.muscle) for (const [wt, ww] of W.weight) {
     const amw = aw * mw * ww;
@@ -67,6 +69,16 @@ export function macroStack(s: MacroSettings): Map<string, number> {
     }
     if (a !== 'baby') for (const [c, cw] of W.cupsize) for (const [f, fw] of W.firmness) {
       if (!(c === 'averagecup' && f === 'averagefirmness')) add(`breast/female-${a}-${m}-${wt}-${c}-${f}`, amw * cw * fw);
+    }
+  }
+  // Muscle past MakeHuman's maximum: carry on along (max-muscle shape - average-muscle shape), for the
+  // universal targets only. Within range the max-muscle weight runs 0..0.98; past it, 1.96 per unit.
+  const extra = Math.max(0, Math.min(s.muscle, EXTENDED_MAX.muscle ?? 1) - 1) * 1.96;
+  if (extra > 0) {
+    for (const [a, aw] of W.age) for (const [wt, ww] of W.weight) for (const [g, gw] of W.gender) {
+      const k = extra * gw * aw * ww;
+      addSigned(`macrodetails/universal-${g}-${a}-maxmuscle-${wt}`, k);
+      addSigned(`macrodetails/universal-${g}-${a}-averagemuscle-${wt}`, -k);
     }
   }
   return out;

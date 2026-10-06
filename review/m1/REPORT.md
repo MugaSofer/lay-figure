@@ -112,3 +112,6 @@ You reported a steady 60 fps on the Note 9, dropping to 40-50 while you drag bod
 
 - **UI no longer covers the figure.** When a sheet is open, the view widens and shifts so the whole figure sits in the uncovered part of the screen (beside the sheet on desktop). Sheets are a little shorter on phones.
 - **Resets and undo.** *Reset body* (Body sheet and More), *Start over* (More). Undo/redo now covers body sliders and hidden parts too, not just the pose.
+
+- **Fix after your test:** super-muscle (above 100%) seemed to come and go. It was also extrapolating MakeHuman's height and proportion shapes, so at non-default height or proportions most of the "extra muscle" was the body resizing by tens of centimetres. Now only the muscle shapes go past MakeHuman's range. A test checks that the extra muscle is about the same whatever the other sliders say.
+- The app now shows errors on screen (there's no console on a phone), and **More** shows the build version.
