@@ -1,0 +1,11 @@
+:root { --bg: #2b2a28; --fg: #eee; --accent: #e8a33d; --panel: #000b; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+  font: 14px/1.35 system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; touch-action: none; }
+#hud { position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0; padding: 8px 12px; display: flex;
+  justify-content: space-between; pointer-events: none; text-shadow: 0 1px 2px #000; }
+#panel { position: fixed; right: 0; top: 0; bottom: 0; width: min(280px, 60vw); overflow: auto; background: var(--panel);
+  padding: 10px; box-sizing: border-box; }
+#panel label { display: block; margin: 6px 0; }
+#panel input[type=range] { width: 100%; }
