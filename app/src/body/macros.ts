@@ -11,6 +11,8 @@ export interface MacroSettings {
   race: Record<Race, number>;
   /** Local modifiers by id (see LOCAL_MODIFIERS), -1..1; missing = 0. */
   local?: Record<string, number>;
+  /** Muscle past 100% also adds mass (default true); false keeps it lean. */
+  muscleMass?: boolean;
 }
 
 /** Sliders that may go past MakeHuman's range. Only muscle, and only its own shapes are extrapolated
@@ -35,6 +37,7 @@ export function defaultMacros(): MacroSettings {
     gender: 0.5, age: 0.5, muscle: 0.5, weight: 0.5, height: 0.5, proportions: 0.5, cupsize: 0.5, firmness: 0.5,
     race: { african: 0.33, asian: 0.33, caucasian: 0.33 },
     local: {},
+    muscleMass: true,
   };
 }
 
@@ -145,7 +148,16 @@ export function localStack(s: MacroSettings): Map<string, number> {
   return out;
 }
 
+/** Weight as MakeHuman sees it. In MakeHuman, weight on a muscular body is mass rather than fat, and big
+ *  muscles need it: with "muscle adds mass" on, muscle past 100% raises it, reaching halfway from the
+ *  user's weight to the maximum at the extended muscle maximum (the user's Weight slider is unchanged). */
+export function effectiveWeight(s: MacroSettings) {
+  if (s.muscleMass === false) return s.weight;
+  const e = Math.max(0, Math.min(s.muscle, EXTENDED_MAX.muscle ?? 1) - 1) / ((EXTENDED_MAX.muscle ?? 1.5) - 1);
+  return s.weight + (1 - s.weight) * 0.5 * e;
+}
+
 /** Everything that shapes the body: macros and local modifiers. */
 export function bodyStack(s: MacroSettings): Map<string, number> {
-  return new Map([...macroStack(s), ...localStack(s)]);
+  return new Map([...macroStack({ ...s, weight: effectiveWeight(s) }), ...localStack(s)]);
 }

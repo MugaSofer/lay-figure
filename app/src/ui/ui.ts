@@ -156,7 +156,14 @@ export class UI {
     this.sheet.append(h('div', { cls: 'sheet-head' }, h('h3', { textContent: 'Body' }),
       h('button', { textContent: 'Reset body', onclick: async () => { await app.resetBody(); this.reopen(); } })));
     this.sheet.append(this.slider('Age', 1, 90, 1, Math.round(ageToYears(m.age)), v => set('age')(yearsToAge(v)), v => `${v} yrs`, undefined, end));
-    for (const s of BODY_SLIDERS) this.sheet.append(this.slider(s.label, 0, EXTENDED_MAX[s.key] ?? 1, 0.01, m[s.key], set(s.key), undefined, s.ends, end));
+    for (const s of BODY_SLIDERS) {
+      this.sheet.append(this.slider(s.label, 0, EXTENDED_MAX[s.key] ?? 1, 0.01, m[s.key], set(s.key), undefined, s.ends, end));
+      if (s.key === 'muscle') {
+        const box = h('input', { type: 'checkbox', checked: m.muscleMass !== false });
+        box.onchange = () => { const b = pose.snapshot(); m.muscleMass = box.checked; void reshape().then(() => pose.commit(b)); };
+        this.sheet.append(h('label', { cls: 'check' }, box, ' Extra muscle adds mass (off: lean, cut)'));
+      }
+    }
     this.sheet.append(h('h4', { textContent: 'Ancestry mix (MakeHuman targets; always adds up to the whole)' }));
     const raceInputs: HTMLInputElement[] = [];
     for (const r of RACES) {

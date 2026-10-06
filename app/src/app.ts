@@ -120,7 +120,10 @@ export class App {
     const keyDir = s.key.position.clone().sub(s.key.target.position).normalize();
     return {
       version: SCENE_VERSION,
-      figures: [{ body: { macros, race, ...(Object.keys(local).length ? { local } : {}) }, pose, hidden: [...f.hidden] }],
+      figures: [{
+        body: { macros, race, ...(Object.keys(local).length ? { local } : {}), ...(this.macros.muscleMass === false ? { muscleMass: false } : {}) },
+        pose, hidden: [...f.hidden],
+      }],
       props: [],
       lights: { key: { dir: keyDir.toArray().map(round) as Vec3, intensity: round(s.key.intensity) }, ambient: round(s.ambient.intensity) },
       camera: { target: o.target.toArray().map(round) as Vec3, radius: round(o.radius), theta: round(o.theta), phi: round(o.phi), focal: round(s.focal) },
@@ -137,6 +140,7 @@ export class App {
     for (const k of SLIDERS) if (typeof fd.body.macros[k] === 'number') this.macros[k] = fd.body.macros[k];
     for (const r of RACES) if (typeof fd.body.race?.[r] === 'number') this.macros.race[r] = fd.body.race[r];
     this.macros.local = { ...(fd.body.local ?? {}) };
+    this.macros.muscleMass = fd.body.muscleMass !== false;
     await this.figure.setMacros(this.macros);
     this.applyPose(fd.pose.joints, fd.pose.root);
     this.figure.setHidden((fd.hidden ?? []).filter((r): r is Region => (REGIONS as readonly string[]).includes(r)));
