@@ -13,7 +13,8 @@ import { PoseRig, type Limb } from './rig';
 const MAX_STEP = (15 * Math.PI) / 180; // per-update cap on joint motion (spike C)
 const HIGHLIGHT = [1.0, 0.72, 0.42];
 
-export interface PoseSnapshot { joints: Quaternion[]; root: Vector3 }
+/** ext: other undoable state (body shape, hidden parts) serialised by whoever owns it; see PoseController.ext. */
+export interface PoseSnapshot { joints: Quaternion[]; root: Vector3; ext: string }
 
 type Drag =
   | { kind: 'limb'; limb: Limb; reach: number; grabOffset: Vector3; plane: Vector3; margin: number; hold: Quaternion | null; passTwist: boolean; twist: { goal: number | null }; exclude: number[] }
@@ -279,15 +280,20 @@ export class PoseController implements PoseInput {
   }
 
   // ---------- history ----------
-  snapshot(): PoseSnapshot { return { joints: this.fig.joints.map(q => q.clone()), root: this.fig.rootOffset.clone() }; }
+  /** Undo also covers state owned elsewhere (body shape, hidden parts): capture it as a string, restore it. */
+  ext: { capture(): string; restore(s: string): void } | null = null;
+  snapshot(): PoseSnapshot {
+    return { joints: this.fig.joints.map(q => q.clone()), root: this.fig.rootOffset.clone(), ext: this.ext?.capture() ?? '' };
+  }
   restore(s: PoseSnapshot) {
     s.joints.forEach((q, i) => this.fig.joints[i].copy(q));
     this.fig.rootOffset.copy(s.root);
     this.fig.applyPose();
+    if (this.ext && s.ext !== this.ext.capture()) this.ext.restore(s.ext);
     this.onChange();
   }
   private same(a: PoseSnapshot, b: PoseSnapshot) {
-    return a.root.distanceTo(b.root) < 1e-6 && a.joints.every((q, i) => q.angleTo(b.joints[i]) < 1e-6);
+    return a.ext === b.ext && a.root.distanceTo(b.root) < 1e-6 && a.joints.every((q, i) => q.angleTo(b.joints[i]) < 1e-6);
   }
   /** Record a change made since `before` (or since the last gesture began). */
   commit(before = this.before) {

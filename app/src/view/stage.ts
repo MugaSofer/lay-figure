@@ -18,6 +18,8 @@ export class Stage {
   readonly ground: Mesh;
   readonly orbit: Orbit = { target: new Vector3(0, 0.95, 0), radius: 4.2, theta: 0.35, phi: 1.45 };
   focal = 50;
+  /** Screen space covered by UI (px), so the view can be fitted into what's left. */
+  private inset = { bottom: 0, right: 0 };
   onFrame: ((dt: number) => void)[] = [];
   private fpsEl: HTMLElement | null = null;
 
@@ -65,10 +67,26 @@ export class Stage {
     this.updateCamera();
   }
 
+  /** Keep the subject in the uncovered part of the screen: widen the view so what filled the canvas fits
+   *  the uncovered area, and shift the image to that area's centre. The lens setting is unchanged. */
+  setInsets(bottom: number, right: number) {
+    if (bottom === this.inset.bottom && right === this.inset.right) return;
+    this.inset = { bottom, right };
+    this.applyFocal();
+  }
+
   private applyFocal() {
-    this.camera.filmGauge = 36;
-    this.camera.setFocalLength(this.focal);
-    this.camera.updateProjectionMatrix();
+    const cam = this.camera, c = this.canvas;
+    cam.filmGauge = 36;
+    cam.setFocalLength(this.focal);
+    const W = c.clientWidth || innerWidth, H = c.clientHeight || innerHeight;
+    const { bottom, right } = this.inset;
+    if (bottom > 0 || right > 0) {
+      const s = Math.max(0.2, Math.min((W - right) / W, (H - bottom) / H));
+      cam.fov = (2 * Math.atan(Math.tan((cam.fov * Math.PI) / 360) / s) * 180) / Math.PI;
+      cam.setViewOffset(W, H, right / 2, bottom / 2, W, H);
+    } else cam.clearViewOffset();
+    cam.updateProjectionMatrix();
   }
 
   updateCamera() {

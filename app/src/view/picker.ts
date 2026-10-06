@@ -68,7 +68,9 @@ export class GpuPicker {
     const w = c.clientWidth, h = c.clientHeight;
     const cam = camera.clone();
     cam.layers.set(LAYER);
-    cam.setViewOffset(w, h, Math.floor(x), Math.floor(y), 1, 1);
+    // compose with any view offset the camera already has (UI insets)
+    const vo = camera.view?.enabled ? camera.view : null;
+    cam.setViewOffset(vo ? vo.fullWidth : w, vo ? vo.fullHeight : h, Math.floor(x) + (vo ? vo.offsetX : 0), Math.floor(y) + (vo ? vo.offsetY : 0), 1, 1);
     const prevTarget = r.getRenderTarget(), prevClear = r.getClearAlpha();
     r.setRenderTarget(this.target);
     r.setClearColor(0x000000, 0);

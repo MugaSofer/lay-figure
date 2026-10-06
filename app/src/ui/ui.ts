@@ -50,6 +50,11 @@ export class UI {
     app.stage.showFps(this.fps);
     this.buildToolbar();
     app.changed.push(() => this.refresh());
+    addEventListener('resize', () => this.updateInsets());
+    for (const k of ['undo', 'redo'] as const) {
+      const b = this.buttons[k], prev = b.onclick;
+      b.onclick = e => { prev?.call(b, e); setTimeout(() => { if (this.openSheet === 'body') this.reopen(); }, 0); };
+    }
     addEventListener('keydown', e => {
       if (!(e.ctrlKey || e.metaKey)) return;
       if (e.key === 'z' && !e.shiftKey) { app.pose.undo(); e.preventDefault(); }
@@ -78,6 +83,17 @@ export class UI {
     );
   }
 
+  /** Tell the stage how much of the screen the UI covers, so the figure stays in view. */
+  private updateInsets() {
+    const desktop = matchMedia('(min-width: 900px)').matches;
+    const tb = this.toolbar.offsetHeight;
+    const sel = this.selBar.style.display === 'flex' ? this.selBar.offsetHeight : 0;
+    const sheet = this.openSheet ? this.sheet.offsetHeight : 0;
+    const bottom = desktop ? tb : tb + Math.max(sel, sheet);
+    const right = desktop && this.openSheet ? this.sheet.offsetWidth + 12 : 0;
+    this.app.stage.setInsets(bottom, right);
+  }
+
   refresh() {
     const { pose, figure } = this.app;
     this.buttons.undo.disabled = !pose.canUndo;
@@ -97,6 +113,7 @@ export class UI {
         h('button', { textContent: 'Done', cls: 'primary', onclick: () => pose.select(-1, false) }),
       );
     }
+    this.updateInsets();
   }
 
   private toggleSheet(name: string) {
@@ -110,43 +127,62 @@ export class UI {
     this.refresh();
   }
 
-  private slider(label: string, min: number, max: number, step: number, value: number, onInput: (v: number) => void, fmt?: (v: number) => string, ends?: [string, string]) {
+  private slider(label: string, min: number, max: number, step: number, value: number, onInput: (v: number) => void, fmt?: (v: number) => string, ends?: [string, string], onCommit?: () => void) {
     const out = h('span', { cls: 'val', textContent: fmt ? fmt(value) : '' });
     const input = h('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value) });
     input.oninput = () => { const v = +input.value; out.textContent = fmt ? fmt(v) : ''; onInput(v); };
+    if (onCommit) input.onchange = onCommit; // fires once, when the drag ends
     const row = h('label', { cls: 'slider' }, h('span', { cls: 'name', textContent: label }), out, input);
     if (ends) row.append(h('span', { cls: 'ends' }, h('span', { textContent: ends[0] }), h('span', { textContent: ends[1] })));
     return row;
   }
 
   private bodySheet() {
-    const app = this.app, m = app.macros;
-    const pending: Partial<Record<string, number>> = {};
-    const flush = coalesce(async () => {
-      for (const [k, v] of Object.entries(pending)) { (m as unknown as Record<string, number>)[k] = v!; delete pending[k]; }
-      await app.figure.setMacros(m);
-      app.emit();
-    });
-    const set = (k: string) => (v: number) => { pending[k] = v; void flush(); };
-    this.sheet.append(h('h3', { textContent: 'Body' }));
-    this.sheet.append(this.slider('Age', 1, 90, 1, Math.round(ageToYears(m.age)), v => set('age')(yearsToAge(v)), v => `${v} yrs`));
-    for (const s of BODY_SLIDERS) this.sheet.append(this.slider(s.label, 0, 1, 0.01, m[s.key], set(s.key), undefined, s.ends));
-    const raceFlush = coalesce(async () => { await app.figure.setMacros(m); app.emit(); });
-    this.sheet.append(h('h4', { textContent: 'Ancestry mix (MakeHuman targets)' }));
-    for (const r of RACES) this.sheet.append(this.slider(r[0].toUpperCase() + r.slice(1), 0, 1, 0.01, m.race[r], v => { m.race[r] = v; void raceFlush(); }));
+    const app = this.app, m = app.macros, pose = app.pose;
+    // one undo step per slider drag: snapshot on the first change, commit on release
+    let before: ReturnType<typeof pose.snapshot> | null = null;
+    const begin = () => { before ??= pose.snapshot(); };
+    const reshape = coalesce(async () => { await app.figure.setMacros(m); app.emit(); });
+    const end = () => { if (before) pose.commit(before); before = null; };
+    const set = (k: keyof Omit<MacroSettings, 'race'>) => (v: number) => { begin(); m[k] = v; void reshape(); };
+    this.sheet.append(h('div', { cls: 'sheet-head' }, h('h3', { textContent: 'Body' }),
+      h('button', { textContent: 'Reset body', onclick: async () => { await app.resetBody(); this.reopen(); } })));
+    this.sheet.append(this.slider('Age', 1, 90, 1, Math.round(ageToYears(m.age)), v => set('age')(yearsToAge(v)), v => `${v} yrs`, undefined, end));
+    for (const s of BODY_SLIDERS) this.sheet.append(this.slider(s.label, 0, 1, 0.01, m[s.key], set(s.key), undefined, s.ends, end));
+    this.sheet.append(h('h4', { textContent: 'Ancestry mix (MakeHuman targets; always adds up to the whole)' }));
+    const raceInputs: HTMLInputElement[] = [];
+    for (const r of RACES) {
+      const row = this.slider(r[0].toUpperCase() + r.slice(1), 0, 0.99, 0.01, m.race[r], v => {
+        begin();
+        app.setRaceMix(r, v);
+        RACES.forEach((x, k) => { if (x !== r) raceInputs[k].value = String(m.race[x]); });
+        void reshape();
+      }, undefined, undefined, end);
+      raceInputs.push(row.querySelector('input')!);
+      this.sheet.append(row);
+    }
     this.sheet.append(h('h3', { textContent: 'Hide parts' }));
     const grid = h('div', { cls: 'chips' });
+    const setHidden = (regions: Iterable<Region>) => { const b = pose.snapshot(); app.setHidden(regions); pose.commit(b); };
     for (const r of REGIONS) {
       const chip = h('button', { textContent: REGION_LABELS[r], cls: app.figure.hidden.has(r) ? 'chip on' : 'chip' });
       chip.onclick = () => {
         const hidden = new Set(app.figure.hidden);
         if (hidden.has(r)) hidden.delete(r); else hidden.add(r as Region);
-        app.setHidden(hidden);
+        setHidden(hidden);
         chip.classList.toggle('on', hidden.has(r));
       };
       grid.append(chip);
     }
-    this.sheet.append(grid, h('button', { textContent: 'Show all', onclick: () => { app.setHidden([]); this.toggleSheet('body'); this.toggleSheet('body'); } }));
+    this.sheet.append(grid, h('button', { textContent: 'Show all', onclick: () => { setHidden([]); this.reopen(); } }));
+  }
+
+  /** Rebuild the open sheet (after values changed underneath it). */
+  private reopen() {
+    const name = this.openSheet;
+    if (!name) return;
+    this.openSheet = null;
+    this.toggleSheet(name);
   }
 
   private viewSheet() {
@@ -209,6 +245,8 @@ export class UI {
         h('button', { cls: 'chip', textContent: 'Load…', onclick: () => file.click() }),
         h('button', { cls: 'chip', textContent: 'Copy share link', onclick: () => this.share() }),
         h('button', { cls: 'chip', textContent: 'Reset pose', onclick: () => app.pose.edit(() => app.figure.resetPose()) }),
+        h('button', { cls: 'chip', textContent: 'Reset body', onclick: () => void app.resetBody() }),
+        h('button', { cls: 'chip', textContent: 'Start over', onclick: () => void app.startOver() }),
       ),
       file,
       h('h3', { textContent: 'Help' }),

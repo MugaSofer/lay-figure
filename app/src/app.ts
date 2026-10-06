@@ -17,6 +17,54 @@ export class App {
   readonly changed: (() => void)[] = [];
   private constructor(readonly stage: Stage, readonly figure: Figure, readonly pose: PoseController, readonly input: InputRouter) {
     pose.onChange = () => this.emit();
+    // undo/redo covers body shape and hidden parts as well as the pose
+    pose.ext = {
+      capture: () => JSON.stringify({ macros: this.macros, hidden: [...this.figure.hidden].sort() }),
+      restore: s => {
+        const { macros, hidden } = JSON.parse(s) as { macros: MacroSettings; hidden: Region[] };
+        Object.assign(this.macros, macros, { race: { ...macros.race } });
+        this.figure.setHidden(hidden);
+        void this.figure.setMacros(this.macros).then(() => this.emit());
+      },
+    };
+  }
+
+  /** Ancestry is a mix: the three weights always sum to MakeHuman's default total (0.99). Setting one
+   *  rescales the others to share what's left. */
+  setRaceMix(race: (typeof RACES)[number], v: number) {
+    const TOTAL = 0.99, r = this.macros.race;
+    v = Math.min(Math.max(v, 0), TOTAL);
+    const others = RACES.filter(x => x !== race);
+    const rest = others.reduce((s, x) => s + r[x], 0);
+    for (const x of others) r[x] = rest > 1e-6 ? (r[x] / rest) * (TOTAL - v) : (TOTAL - v) / others.length;
+    r[race] = v;
+  }
+
+  /** Back to the default body (pose and view untouched); one undo step. */
+  async resetBody() {
+    const before = this.pose.snapshot();
+    Object.assign(this.macros, defaultMacros());
+    await this.figure.setMacros(this.macros);
+    this.pose.commit(before);
+  }
+
+  /** Default body, pose, hidden parts, camera and light; one undo step (camera and light aren't undoable). */
+  async startOver() {
+    const before = this.pose.snapshot();
+    Object.assign(this.macros, defaultMacros());
+    this.figure.resetPose();
+    this.figure.setHidden([]);
+    await this.figure.setMacros(this.macros);
+    const s = this.stage;
+    Object.assign(s.orbit, { radius: 4.2, theta: 0.35, phi: 1.45 });
+    s.orbit.target.set(0, 0.95, 0);
+    s.setFocal(50, false);
+    s.updateCamera();
+    s.key.position.copy(s.key.target.position).add(new Vector3(-1.6, 3.4, 2.4));
+    s.key.intensity = 2.4;
+    s.ambient.intensity = 0.85;
+    this.pose.select(-1, false);
+    this.pose.commit(before);
   }
 
   static async create(host: HTMLElement, assets: string) {
