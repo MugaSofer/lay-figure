@@ -4,7 +4,10 @@ Browser-based posable figure for drawing reference. Spec: `Lay Figure — design
 (currently local only, not committed). Personal/environment notes live in `CLAUDE.local.md` (git-ignored).
 
 ## Status
-Phase 0 (spikes A/B/C). Hard stop after Phase 0 for the art director's go-ahead.
+Phase 0 done (report: `review/phase0/REPORT.md`, all recommendations approved 2026-10-06). Now on **M1 Mannequin**.
+Key decisions carried into M1: MakeHuman CC0 data read directly (no MPFB code in the pipeline), body shaped on CPU
+(own implementation of the macro maths), bones refit per body, CoR skinning + auto corrective shapes, touch IK
+design from spike C (`spikes/c-touch/src/main.ts`: swivel continuity, smooth limits, SDF push-out, rate cap).
 
 ## Layout
 ```
