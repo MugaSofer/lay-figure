@@ -39,7 +39,8 @@ export class PoseRig {
   refresh() {
     this.limits = this.fig.bones.map((bone, i) => {
       const spec = specFor(bone.name);
-      return spec ? resolveLimit(spec, this.fig.rests[i].rotation, bone.name.endsWith('_r') ? -1 : 1) : null;
+      const parent = this.fig.data.meta.bones[i].parent;
+      return spec ? resolveLimit(spec, this.fig.rests[i].rotation, bone.name.endsWith('_r') ? -1 : 1, parent >= 0 ? this.fig.rests[parent].rotation : undefined) : null;
     });
     this.radii = fitRadii(this.fig);
   }
@@ -94,10 +95,15 @@ export class PoseRig {
     const cosA = Math.min(1, Math.max(-1, (L1 * L1 + dist * dist - reach * reach) / (2 * L1 * dist)));
     const sinA = Math.sqrt(1 - cosA * cosA);
 
-    // Hinge axis of the joint in the upper bone's frame: the lower bone flexes toward limb.flex at rest.
+    // Hinge axis: the normal of the plane the two bones already make at rest (MakeHuman's arms rest bent
+    // ~43 deg, which defines the elbow plane exactly), oriented so positive rotation flexes toward
+    // limb.flex. For a nearly straight rest (legs, ~7 deg) fall back to the flex direction.
     const upRest = fig.rests[limb.upper].rotation, loRest = fig.rests[limb.lower].rotation;
-    const loDirRest = Y.clone().applyQuaternion(loRest);
-    const hingeWorldRest = new Vector3().crossVectors(loDirRest, limb.flex).normalize();
+    const upDirRest = Y.clone().applyQuaternion(upRest), loDirRest = Y.clone().applyQuaternion(loRest);
+    const hingeWorldRest = upDirRest.angleTo(loDirRest) > 0.26
+      ? new Vector3().crossVectors(upDirRest, loDirRest).normalize()
+      : new Vector3().crossVectors(loDirRest, limb.flex).normalize();
+    if (new Vector3().crossVectors(hingeWorldRest, loDirRest).dot(limb.flex) < 0) hingeWorldRest.negate();
     const hingeUpLocal = hingeWorldRest.clone().applyQuaternion(upRest.clone().invert());
     hingeUpLocal.addScaledVector(Y, -hingeUpLocal.dot(Y)).normalize();
     const hingeLoLocal = hingeWorldRest.clone().applyQuaternion(loRest.clone().invert()).normalize();
@@ -149,12 +155,20 @@ export class PoseRig {
     fig.group.updateMatrixWorld(true);
     const E = this.worldPos(limb.lower);
     const want = target.clone().sub(E).normalize();
+    // The joint is hinge(after) * twist(first): the hinge axis lives in the untwisted rest frame, and
+    // twist about the bone's own axis doesn't change where it points.
     const { twist } = swingTwist(fig.joints[limb.lower]);
-    const straight = this.worldFromJoint(limb.lower, twist); // hinge unbent, twist kept
+    const straight = this.worldFromJoint(limb.lower, new Quaternion());
     const curDir = Y.clone().applyQuaternion(straight);
     const hW = hingeLoLocal.clone().applyQuaternion(straight);
     const a = Math.atan2(hW.dot(new Vector3().crossVectors(curDir, want)), curDir.dot(want));
     this.setJoint(limb.lower, new Quaternion().setFromAxisAngle(hingeLoLocal, a).multiply(twist));
+    // Last few mm: point the lower bone exactly at the target with a minimal turn, within its limits
+    // (elbows and knees allow a few degrees of sideways give).
+    fig.group.updateMatrixWorld(true);
+    const wq = this.worldQuat(limb.lower);
+    const dirNow = Y.clone().applyQuaternion(wq);
+    this.setWorld(limb.lower, new Quaternion().setFromUnitVectors(dirNow, want).multiply(wq));
   }
 
   /** Keep an end bone (hand, foot) at a world rotation; for hands, pass excess twist to the forearm. */

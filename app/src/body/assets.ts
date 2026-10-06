@@ -61,10 +61,14 @@ function view(buf: ArrayBuffer, info: ArrayInfo) {
   return new C(buf, info.offset, info.length);
 }
 
-export async function loadBody(base: string): Promise<BodyData> {
-  const meta: BodyMeta = await (await fetch(`${base}/body.json`)).json();
+/** How assets are fetched (swappable so tests can read from disk). */
+export interface Fetcher { json(url: string): Promise<unknown>; gz(url: string): Promise<ArrayBuffer> }
+export const httpFetcher: Fetcher = { json: async url => (await fetch(url)).json(), gz: fetchGz };
+
+export async function loadBody(base: string, fetcher: Fetcher = httpFetcher): Promise<BodyData> {
+  const meta = (await fetcher.json(`${base}/body.json`)) as BodyMeta;
   if (meta.version !== 1) throw new Error(`body format ${meta.version} not supported`);
-  const buf = await fetchGz(`${base}/${meta.body}`);
+  const buf = await fetcher.gz(`${base}/${meta.body}`);
   const L = meta.layout;
   return {
     meta,
@@ -80,14 +84,14 @@ export async function loadBody(base: string): Promise<BodyData> {
 /** Macro target packs, fetched on first use and kept. */
 export class MacroLibrary {
   private packs = new Map<string, Promise<Target[]>>();
-  constructor(private base: string, private meta: BodyMeta) {}
+  constructor(private base: string, private meta: BodyMeta, private fetcher: Fetcher = httpFetcher) {}
 
   private pack(age: string) {
     let p = this.packs.get(age);
     if (!p) {
       const info = this.meta.macroPacks[age];
       const wide = this.meta.shapeVertexCount > 65535;
-      p = fetchGz(`${this.base}/${info.file}`).then(buf => info.offsets.map(off => {
+      p = this.fetcher.gz(`${this.base}/${info.file}`).then(buf => info.offsets.map(off => {
         const n = new DataView(buf).getUint32(off, true);
         const idxBytes = n * (wide ? 4 : 2);
         const indices = wide ? new Uint32Array(buf, off + 4, n) : new Uint16Array(buf, off + 4, n);

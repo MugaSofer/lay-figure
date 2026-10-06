@@ -8,11 +8,16 @@ import { Quaternion, Vector3 } from 'three';
 
 export type Dir = 'up' | 'down' | 'forward' | 'back' | 'out' | 'in';
 export interface LimitSpec {
-  /** Neutral direction the swing is measured from; omit to use the rest direction. */
-  neutral?: Dir | [Dir, Dir, number]; // [a, b, deg]: tilted from a toward b
+  /** Neutral direction the swing is measured from: a body direction, 'parent' (straight on from the
+   *  parent bone, for elbows and knees, whose rest pose is already bent), or omitted for the rest direction. */
+  neutral?: Dir | [Dir, Dir, number] | 'parent'; // [a, b, deg]: tilted from a toward b
   /** Max swing (degrees) toward each of four directions around the neutral. */
   swing: Partial<Record<Dir, number>>;
   twist: [number, number];
+  /** Hinge joints (elbow, knee): "forward"/"back" mean flexion/extension in the plane the joint already
+   *  bends in at rest, when that bend is clear (MakeHuman's elbows rest ~43 deg bent, partly inward).
+   *  Must agree with the IK solver's hinge axis (PoseRig.solveLimb). */
+  flexFromRest?: boolean;
 }
 
 const LIMB = (s: LimitSpec) => s;
@@ -21,11 +26,11 @@ export const LIMITS: Record<string, LimitSpec> = {
   // arms
   clavicle: LIMB({ swing: { up: 25, down: 8, forward: 18, back: 15 }, twist: [-5, 5] }),
   upperarm: LIMB({ neutral: 'down', swing: { forward: 175, back: 60, out: 178, in: 45 }, twist: [-80, 80] }),
-  lowerarm: LIMB({ swing: { forward: 150, back: 2, out: 3, in: 3 }, twist: [-85, 85] }),
+  lowerarm: LIMB({ neutral: 'parent', flexFromRest: true, swing: { forward: 150, back: 3, out: 4, in: 4 }, twist: [-85, 85] }),
   hand: LIMB({ swing: { in: 80, out: 70, forward: 25, back: 35 }, twist: [-5, 5] }),
   // legs
   thigh: LIMB({ neutral: 'down', swing: { forward: 125, back: 30, out: 55, in: 30 }, twist: [-40, 40] }),
-  calf: LIMB({ swing: { back: 150, forward: 2, out: 2, in: 2 }, twist: [-8, 8] }),
+  calf: LIMB({ neutral: 'parent', flexFromRest: true, swing: { back: 150, forward: 3, out: 3, in: 3 }, twist: [-8, 8] }),
   foot: LIMB({ swing: { up: 25, down: 50, in: 25, out: 20 }, twist: [-15, 15] }),
   ball: LIMB({ swing: { up: 60, down: 30, in: 3, out: 3 }, twist: [-2, 2] }),
   // trunk and head (centre bones: "out"/"in" mean the figure's left/right)
@@ -58,7 +63,7 @@ export function specFor(boneName: string): LimitSpec | null {
 const FINGER: LimitSpec = { swing: { in: 100, out: 30, forward: 20, back: 20 }, twist: [-10, 10] };
 
 /** side: +1 for the figure's left (and centre bones), -1 for its right. restWorld: bone rest rotation. */
-export function resolveLimit(spec: LimitSpec, restWorld: Quaternion, side: 1 | -1): Limit {
+export function resolveLimit(spec: LimitSpec, restWorld: Quaternion, side: 1 | -1, parentRestWorld?: Quaternion): Limit {
   const inv = restWorld.clone().invert();
   const w = (d: Dir) => {
     const v = WORLD[d].clone();
@@ -67,7 +72,9 @@ export function resolveLimit(spec: LimitSpec, restWorld: Quaternion, side: 1 | -
   };
   const Y = new Vector3(0, 1, 0);
   let neutral = Y.clone();
-  if (spec.neutral) {
+  if (spec.neutral === 'parent') {
+    if (parentRestWorld) neutral = new Vector3(0, 1, 0).applyQuaternion(parentRestWorld).applyQuaternion(inv);
+  } else if (spec.neutral) {
     if (Array.isArray(spec.neutral)) {
       const [a, b, deg] = spec.neutral, r = (deg * Math.PI) / 180;
       neutral = w(a).multiplyScalar(Math.cos(r)).addScaledVector(w(b), Math.sin(r)).normalize();
@@ -82,6 +89,19 @@ export function resolveLimit(spec: LimitSpec, restWorld: Quaternion, side: 1 | -
   const axisA = perp(w(pa[0]));
   const axisB = perp(w(pb[0]).addScaledVector(axisA, -w(pb[0]).dot(axisA)));
   const rad = (d: Dir) => ((spec.swing[d] ?? spec.swing[OPP[d]] ?? 30) * Math.PI) / 180;
+  if (spec.flexFromRest) {
+    // the rest bend: the bone's own rest direction (+Y) relative to straight-on (neutral)
+    const bend = Y.clone().addScaledVector(neutral, -Y.dot(neutral));
+    if (bend.length() > Math.sin(0.26)) {
+      const flexDir: Dir = spec.swing.forward !== undefined && (spec.swing.forward ?? 0) > (spec.swing.back ?? 0) ? 'forward' : 'back';
+      const a = bend.normalize(), b = new Vector3().crossVectors(neutral, a).normalize();
+      return {
+        neutral, axisA: a, axisB: b,
+        maxA: [rad(flexDir), rad(OPP[flexDir])], maxB: [rad('out'), rad('in')],
+        twist: [(spec.twist[0] * Math.PI) / 180, (spec.twist[1] * Math.PI) / 180],
+      };
+    }
+  }
   return {
     neutral, axisA, axisB,
     maxA: [rad(pa[0]), rad(pa[1])], maxB: [rad(pb[0]), rad(pb[1])],

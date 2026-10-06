@@ -7,6 +7,7 @@ import type { PoseInput } from '../view/input';
 import { Rings, AXES, type Axis } from '../view/rings';
 import type { Stage } from '../view/stage';
 import { sdf } from './colliders';
+import { mirrorPose, type MirrorMode } from './mirror';
 import { PoseRig, type Limb } from './rig';
 
 const MAX_STEP = (15 * Math.PI) / 180; // per-update cap on joint motion (spike C)
@@ -318,25 +319,7 @@ export class PoseController implements PoseInput {
   }
 
   /** Mirror the pose (whole body, or only copy one side onto the other). */
-  mirror(mode: 'flip' | 'l2r' | 'r2l') {
-    const fig = this.fig;
-    this.edit(() => {
-      const rests = fig.rests;
-      const toWorldAxes = (i: number, q: Quaternion) => rests[i].rotation.clone().multiply(q).multiply(rests[i].rotation.clone().invert());
-      const fromWorldAxes = (i: number, w: Quaternion) => rests[i].rotation.clone().invert().multiply(w).multiply(rests[i].rotation);
-      const reflect = (w: Quaternion) => new Quaternion(w.x, -w.y, -w.z, w.w); // across the figure's midline (x = 0)
-      const src = fig.joints.map(q => q.clone());
-      fig.bones.forEach((bone, i) => {
-        const n = bone.name;
-        const twinName = n.endsWith('_l') ? n.slice(0, -2) + '_r' : n.endsWith('_r') ? n.slice(0, -2) + '_l' : n;
-        const j = fig.boneIndex.get(twinName)!;
-        if (mode !== 'flip') {
-          const from = mode === 'l2r' ? '_l' : '_r';
-          if (!twinName.endsWith(from)) return; // only write the destination side, from its twin
-        }
-        fig.joints[i].copy(fromWorldAxes(i, reflect(toWorldAxes(j, src[j]))));
-      });
-      if (mode === 'flip') fig.rootOffset.x *= -1;
-    });
+  mirror(mode: MirrorMode) {
+    this.edit(() => mirrorPose(this.fig, mode));
   }
 }
