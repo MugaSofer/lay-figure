@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2b2a28">
+<title>Spike C: touch posing</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2a28; color: #eee;
+    font: 14px/1.3 system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #hud { position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0; padding: 8px 12px;
+    display: flex; justify-content: space-between; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #sel { text-align: right; white-space: pre; }
+  #sel.limit { color: #ffb070; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0));
+    display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; background: linear-gradient(transparent, #0008); }
+  #bar button { min-width: 52px; height: 48px; padding: 0 10px; border: 0; border-radius: 12px;
+    background: #fff2; color: #fff; font: inherit; font-weight: 600; touch-action: manipulation; }
+  #bar button.on { background: #e8a33d; color: #222; }
+  #bar button:disabled { opacity: .35; }
+  #help { position: fixed; inset: 0; background: #000c; padding: 24px; display: none; overflow: auto; }
+  #help.show { display: block; }
+  #help li { margin: .4em 0; }
+</style>
+</head>
+<body>
+<div id="hud"><span id="fps">– fps</span><span id="sel">Tap the arm</span></div>
+<div id="bar">
+  <button id="undo">Undo</button><button id="redo">Redo</button>
+  <button id="limits" class="on">Limits</button><button id="hold" class="on">Hold hand</button>
+  <button id="lens">50mm</button><button id="reset">Reset</button><button id="helpBtn">?</button>
+</div>
+<div id="help">
+  <h3>Spike C: one-arm touch posing</h3>
+  <ul>
+    <li><b>Tap</b> a part of the arm to select it.</li>
+    <li><b>Drag</b> a part to pull it (IK). Dragging the hand moves the whole arm; dragging the forearm bends the elbow; dragging the upper arm swings the shoulder.</li>
+    <li><b>Long-press</b> a part to show rotation rings for its joint, then drag a ring to rotate around that axis.</li>
+    <li><b>One finger</b> on empty space orbits. <b>Two fingers</b> pinch to zoom and drag to pan.</li>
+    <li>S Pen: hover highlights; holding the side button while dragging orbits.</li>
+    <li><b>Limits</b> toggles anatomical joint limits. <b>Hold hand</b>: the hand keeps its angle in the world while you drag it.</li>
+  </ul>
+  <p>What to react to: does selecting land on the part you meant? Is your finger hiding what you're posing? Do the rings feel controllable? Does the elbow go where you expect?</p>
+  <p>Tap anywhere to close.</p>
+</div>
+<script type="module" src="./src/main.ts"></script>
+</body>
+</html>
