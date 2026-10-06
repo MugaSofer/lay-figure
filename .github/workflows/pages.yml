@@ -21,6 +21,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Build app
+        run: |
+          cd app
+          pnpm install --frozen-lockfile
+          pnpm build
+          cd ..
+          mkdir -p site
+          cp -r app/dist/. site/
       - name: Build spikes
         run: |
           mkdir -p site/spikes
@@ -30,7 +38,7 @@ jobs:
             (cd "$d" && pnpm install --frozen-lockfile && pnpm build)
             cp -r "$d/dist" "site/spikes/$n"
           done
-          cp spikes/index.html site/index.html
+          cp spikes/index.html site/spikes/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

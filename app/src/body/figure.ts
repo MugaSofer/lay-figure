@@ -8,6 +8,7 @@ import {
 } from 'three';
 import type { BodyData, MacroLibrary } from './assets';
 import { macroStack, type MacroSettings } from './macros';
+import { triangleRegions, visibleIndex, type Region } from './regions';
 import { applyTargets, boneRests, groundY, shapeNormals, shapeTriangles, type BoneRest } from './shape';
 
 export class Figure {
@@ -28,10 +29,15 @@ export class Figure {
   private shapeSeq = 0;
   /** Called after every rebuild (shape change): skeleton rebound, rests recomputed. */
   readonly onRebuild: (() => void)[] = [];
+  /** Called when the visible triangles change (hidden regions). */
+  readonly onIndex: (() => void)[] = [];
+  readonly hidden = new Set<Region>();
+  private triRegions: Uint8Array;
 
   constructor(readonly data: BodyData, private readonly macros: MacroLibrary, material: Material) {
     const { meta } = data;
     this.tris = shapeTriangles(data);
+    this.triRegions = triangleRegions(data);
     this.shapePositions = new Float32Array(data.basePositions);
     this.shapeNormalsBuf = new Float32Array(this.shapePositions.length);
 
@@ -147,6 +153,14 @@ export class Figure {
     this.joints.forEach(q => q.identity());
     this.rootOffset.set(0, 0, 0);
     this.applyPose();
+  }
+
+  setHidden(regions: Iterable<Region>) {
+    this.hidden.clear();
+    for (const r of regions) this.hidden.add(r);
+    const geo = this.mesh.geometry;
+    geo.setIndex(new BufferAttribute(visibleIndex(this.data, this.triRegions, this.hidden), 1));
+    for (const f of this.onIndex) f();
   }
 
   /** Rest rotation of a bone relative to its parent (for converting world-space edits to joints). */

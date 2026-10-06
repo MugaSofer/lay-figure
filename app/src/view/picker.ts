@@ -52,6 +52,7 @@ export class GpuPicker {
     this.mesh.layers.set(LAYER);
     fig.group.add(this.mesh);
     this.rebind();
+    fig.onIndex.push(() => geo.setIndex(src.getIndex()));
   }
 
   /** Share the figure's skeleton (call after the figure rebinds on a shape change). */
