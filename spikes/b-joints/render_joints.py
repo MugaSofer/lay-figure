@@ -29,6 +29,7 @@ import cor as corlib  # noqa: E402
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = os.path.abspath(argv[0] if argv else "spikeB_out")
 RIG = argv[1] if len(argv) > 1 else "game_engine"
+SET = argv[2] if len(argv) > 2 else "joints"  # "joints": one joint at a time; "ext": compound poses, 3 views
 os.makedirs(OUT, exist_ok=True)
 
 # --- enable MPFB2 (factory startup skips user prefs) ---
@@ -259,6 +260,34 @@ def frame(view_dir, focus, ortho):
     cam.location = focus + v * 3
     cam.rotation_euler = (-v).to_track_quat("-Z", "Y").to_euler()
 
+
+def render_methods(stem, view, focus, ortho, methods):
+    set_posed(corlib.deform_cor(rest, Wts, skin_mats(), cor_pts))
+    for mname, dq, use_cs in methods:
+        is_cor = dq is None
+        basemesh.hide_render = is_cor
+        corobj.hide_render = not is_cor
+        if is_cor:
+            cor_cs.show_render = cor_cs.show_viewport = use_cs
+        else:
+            arm_mod.use_deform_preserve_volume = dq
+            cs.show_render = cs.show_viewport = use_cs
+        frame(view, focus, ortho)
+        scene.render.filepath = os.path.join(OUT, f"{stem}_{mname}.png")
+        bpy.ops.render.render(write_still=True)
+
+
+if SET == "ext":
+    import poses_ext
+    EXT_METHODS = [m for m in METHODS if m[0] != "CoR"]
+    for name, fn, views, focus_fn, ortho in poses_ext.build(dict(aim=aim, spin=spin, bent=bent, arm=arm, W=W, fwd=fwd, lat=lat, down=down)):
+        reset()
+        fn()
+        focus = focus_fn()
+        for vname, vdir in views:
+            render_methods(f"{name}_{vname}", vdir, focus, ortho, EXT_METHODS)
+        print("rendered", name)
+    TESTS = []
 
 for label, fn, angles, view, bone_key, end, ortho in TESTS:
     for a in angles:
