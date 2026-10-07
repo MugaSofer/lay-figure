@@ -115,3 +115,17 @@ You reported a steady 60 fps on the Note 9, dropping to 40-50 while you drag bod
 
 - **Fix after your test:** super-muscle (above 100%) seemed to come and go. It was also extrapolating MakeHuman's height and proportion shapes, so at non-default height or proportions most of the "extra muscle" was the body resizing by tens of centimetres. Now only the muscle shapes go past MakeHuman's range. A test checks that the extra muscle is about the same whatever the other sliders say.
 - The app now shows errors on screen (there's no console on a phone), and **More** shows the build version.
+
+## Corrective shapes (the last piece of the Phase 0 joint plan)
+
+Shoulders, elbows, hips and knees now get corrective shapes on top of CoR skinning:
+
+- **Key poses:** 14 per side. Shoulder raised sideways, up, forward, forward-up, across and back; elbow at 90° and 145°; hip forward, forward-up, out and back; knee at 90° and 145°.
+- **Baking:** for each key, a background worker skins the body on the CPU with CoR, runs Corrective Smooth (as in the Phase 0 comparison), and stores the difference as a rest-space shape with matching normals. All 28 take about 0.7 s on the laptop, probably 3–4 s on a phone. It re-runs whenever the body stops changing, so the shapes fit whatever body you've made.
+- **Live:** each joint blends its keys smoothly by how close its current swing is to each key. They're GPU morph targets, so they cost almost nothing per frame.
+- **Toggle:** View → Skinning has a switch to compare with and without.
+
+![Overhead, without (top) and with (bottom)](correctives-overhead.jpg)
+![Deep crouch, without (top) and with (bottom)](correctives-crouch.jpg)
+
+The overhead shoulder no longer looks bolted on. The crouch improves more subtly, at the knees and groin. Hard wrist flexion is still the known gap: no key covers it, and Phase 0 showed smoothing doesn't fix it either.

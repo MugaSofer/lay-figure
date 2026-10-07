@@ -18,6 +18,8 @@ const page = await browser.newPage({ viewport: { width: 720, height: 900 } });
 page.on('pageerror', e => console.error('page error:', e.message));
 await page.goto(url + '?bare');
 await page.waitForFunction(() => window.lay?.app !== undefined, null, { timeout: 60000 });
+// corrective shapes bake in a worker after load; renders should include them
+await page.waitForFunction(() => /corrective/.test(window.lay.app.correctiveStatus), null, { timeout: 60000 });
 const scenes = readdirSync(join(REVIEW, 'scenes')).filter(f => f.endsWith('.json')).sort();
 for (const file of scenes) {
   const scene = JSON.parse(readFileSync(join(REVIEW, 'scenes', file), 'utf8'));

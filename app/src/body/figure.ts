@@ -23,6 +23,8 @@ export class Figure {
   /** Root offset in the figure's space (hips drag, crouch), applied to the root bone. */
   readonly rootOffset = new Vector3();
   rests: BoneRest[] = [];
+  /** Centres of rotation in shape space (3 per shape vertex), refreshed with the shape. */
+  corShape: Float32Array;
   shapePositions: Float32Array;
   private shapeNormalsBuf: Float32Array;
   private readonly tris: Uint32Array;
@@ -44,6 +46,7 @@ export class Figure {
     this.triRegions = triangleRegions(data);
     this.shapePositions = new Float32Array(data.basePositions);
     this.shapeNormalsBuf = new Float32Array(this.shapePositions.length);
+    this.corShape = new Float32Array(this.shapePositions.length);
 
     const n = meta.renderVertexCount, inf = meta.maxInfluences;
     const geo = new BufferGeometry();
@@ -132,14 +135,20 @@ export class Figure {
     // Rest skeleton from this shape
     this.rests = boneRests(pos, meta.bones);
 
-    // Centres of rotation for CoR skinning: anchored to their joint, scaled with the bone's length
-    const C = geo.getAttribute('corPoint') as BufferAttribute, ca = C.array as Float32Array;
+    // Centres of rotation for CoR skinning: anchored to their joint, scaled with the bone's length.
+    // Kept in shape space too (corShape), for CPU skinning when baking corrective shapes.
     const { corAnchor, corOffset } = this.data, lens = meta.cor.boneLengths;
-    for (let r = 0; r < map.length; r++) {
-      const s = map[r], a = corAnchor[s], d = r * 3;
-      if (a === 255) { ca[d] = pos[s * 3]; ca[d + 1] = pos[s * 3 + 1]; ca[d + 2] = pos[s * 3 + 2]; continue; }
+    const cs = this.corShape;
+    for (let s = 0; s < corAnchor.length; s++) {
+      const a = corAnchor[s];
+      if (a === 255) { cs[s * 3] = pos[s * 3]; cs[s * 3 + 1] = pos[s * 3 + 1]; cs[s * 3 + 2] = pos[s * 3 + 2]; continue; }
       const h = this.rests[a].head, k = this.rests[a].length / (lens[a] || 1);
-      ca[d] = h.x + corOffset[s * 3] * k; ca[d + 1] = h.y + corOffset[s * 3 + 1] * k; ca[d + 2] = h.z + corOffset[s * 3 + 2] * k;
+      cs[s * 3] = h.x + corOffset[s * 3] * k; cs[s * 3 + 1] = h.y + corOffset[s * 3 + 1] * k; cs[s * 3 + 2] = h.z + corOffset[s * 3 + 2] * k;
+    }
+    const C = geo.getAttribute('corPoint') as BufferAttribute, ca = C.array as Float32Array;
+    for (let r = 0; r < map.length; r++) {
+      const s = map[r] * 3, d = r * 3;
+      ca[d] = cs[s]; ca[d + 1] = cs[s + 1]; ca[d + 2] = cs[s + 2];
     }
     C.needsUpdate = true;
     meta.bones.forEach((b, i) => {

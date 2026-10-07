@@ -2,6 +2,7 @@
 // state to and from SceneData for saving, loading and share links.
 import { DoubleSide, FrontSide, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
 import { loadBody, MacroLibrary } from './body/assets';
+import { Correctives } from './body/correctiveRuntime';
 import { Figure } from './body/figure';
 import { defaultMacros, LOCAL_MODIFIERS, RACES, SLIDERS, type MacroSettings, type Slider } from './body/macros';
 import { REGIONS, type Region } from './body/regions';
@@ -15,6 +16,8 @@ import { Stage } from './view/stage';
 export class App {
   macros: MacroSettings = defaultMacros();
   readonly changed: (() => void)[] = [];
+  correctives!: Correctives;
+  correctiveStatus = '';
   private constructor(readonly stage: Stage, readonly figure: Figure, readonly pose: PoseController, readonly input: InputRouter) {
     pose.onChange = () => this.emit();
     // undo/redo covers body shape and hidden parts as well as the pose
@@ -77,6 +80,9 @@ export class App {
     const pose = new PoseController(figure, stage);
     const input = new InputRouter(stage, pose);
     const app = new App(stage, figure, pose, input);
+    app.correctives = new Correctives(figure, pose.rig);
+    app.correctives.onStatus = (s, d) => { app.correctiveStatus = s === 'baking' ? 'Updating…' : s === 'error' ? `Failed: ${d}` : d ?? ''; app.emit(); };
+    stage.onFrame.push(() => app.correctives.update());
     await figure.setMacros(app.macros);
     stage.fitShadow(figure.group);
     // with parts hidden you can see into the body; draw back faces so it isn't see-through

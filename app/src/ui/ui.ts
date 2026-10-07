@@ -236,6 +236,11 @@ export class UI {
         b.onclick = () => { this.app.figure.setCorSkinning(k === 'cor'); this.toggleSheet('view'); this.toggleSheet('view'); };
         return b;
       })),
+      h('label', { cls: 'check' }, (() => {
+        const box = h('input', { type: 'checkbox', checked: this.app.correctives.enabled });
+        box.onchange = () => { this.app.correctives.enabled = box.checked; this.app.correctives.update(); };
+        return box;
+      })(), ` Corrective shapes (smoother shoulders, elbows, hips, knees) ${this.app.correctiveStatus ? '· ' + this.app.correctiveStatus : ''}`),
       h('button', { textContent: 'Reset camera', onclick: () => { Object.assign(s.orbit, { radius: 4.2, theta: 0.35, phi: 1.45 }); s.orbit.target.set(0, 0.95, 0); s.setFocal(50, false); s.updateCamera(); } }),
     );
   }
