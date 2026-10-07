@@ -6,8 +6,9 @@ Live: https://mugasofer.github.io/lay-figure/ (Phase 0 spikes under `/spikes/`).
 
 ## Status
 - Phase 0 done: `review/phase0/REPORT.md` (all recommendations approved 2026-10-06).
-- **M1 Mannequin** built: `review/m1/REPORT.md` (awaiting art director's phone test and review).
-- Next up (agreed in Phase 0, not yet built): auto-generated corrective shapes on top of CoR skinning.
+- **M1 Mannequin** built and phone-tested: `review/m1/REPORT.md` (rounds of feedback appended there).
+- Joint deformation per Phase 0 plan is complete: CoR skinning + corrective shapes baked per body
+  (`body/correctives*.ts`: CPU CoR skin + delta mush at 28 key poses in a worker, RBF-blended morph targets).
 
 ## Layout
 ```
@@ -32,7 +33,9 @@ spikes/         Phase 0 throwaway prototypes (deployed under /spikes/)
 - `body/` assets loader (gzip-aware), `macros.ts` (MakeHuman macro maths; port of `pipeline/lay_pipeline/macros.py`,
   fitted black-box to MPFB, never derived from GPL code), `shape.ts` (CPU shaping, normals, bone rest frames: C·M, not
   a change of basis), `figure.ts` (SkinnedMesh; rebuilds skeleton per shape; joints stored relative to rest frames),
-  `corSkinning.ts` (CoR shader patch), `regions.ts` (hide regions).
+  `corSkinning.ts` (CoR shader patch), `correctives.ts` / `correctiveKeys.ts` / `correctiveRuntime.ts` / worker
+  (corrective shapes), `regions.ts` (hide regions). Body settings also carry `local` modifiers (regional muscle/fat)
+  and `muscleMass`; muscle > 100% extrapolates only the universal muscle targets (see macros.ts).
 - `pose/` `limits.ts` (anatomical limits in body terms; elbows/knees flex in their rest-bend plane and must agree with
   the solver), `rig.ts` (two-bone IK, aims, hips), `controller.ts` (gestures, undo, rings), `mirror.ts`, `colliders.ts`.
 - `view/` stage (focal-length camera, key+ambient, shadows), input routing, GPU picker (flat bone ids!), rings.
