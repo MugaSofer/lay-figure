@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "scenes": "node scripts/make-scenes.mjs",
-    "review": "node scripts/render-review.mjs"
+    "review": "node scripts/render-review.mjs",
+    "sw-check": "node scripts/sw-upgrade-check.mjs"
   },
   "dependencies": {
     "three": "0.186.1"

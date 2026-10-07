@@ -68,7 +68,13 @@ function view(buf: ArrayBuffer, info: ArrayInfo) {
 
 /** How assets are fetched (swappable so tests can read from disk). */
 export interface Fetcher { json(url: string): Promise<unknown>; gz(url: string): Promise<ArrayBuffer> }
-export const httpFetcher: Fetcher = { json: async url => (await fetch(url)).json(), gz: fetchGz };
+/** Target packs are cached first-use by the service worker, so their URLs carry a content hash. */
+function versioned(url: string) {
+  const file = url.slice(url.lastIndexOf('/') + 1);
+  const h = typeof __ASSET_HASHES__ !== 'undefined' ? __ASSET_HASHES__[file] : undefined;
+  return h && file.startsWith('macro-') ? `${url}?v=${h}` : url;
+}
+export const httpFetcher: Fetcher = { json: async url => (await fetch(url)).json(), gz: url => fetchGz(versioned(url)) };
 
 export async function loadBody(base: string, fetcher: Fetcher = httpFetcher): Promise<BodyData> {
   const meta = (await fetcher.json(`${base}/body.json`)) as BodyMeta;

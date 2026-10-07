@@ -13,3 +13,13 @@
 | 2026-10-06 | Recommend MakeHuman CC0 over MHR, SOMA-X and Anny (approved 2026-10-06) | MHR has toeless feet and no named sliders; Anny is the same mesh; SOMA-X has licence questions and no sliders | MHR, SOMA-X, Anny, GHUM (academic only) |
 | 2026-10-06 | Phase 0 closed; art director approved all recommendations. M1 begins | Spikes A/B/C answered their questions | n/a |
 | 2026-10-06 | Own implementation of MakeHuman macro sliders, fitted black-box to MPFB output (not derived from GPL code or MPFB's macro config) | Keeps GPL out; the fit gives an exact default body and single sliders within 7 mm, random mixes median 5 mm | Port MPFB's code (GPL), ship MPFB-evaluated presets only (no continuous sliders) |
+
+## 2026-10-07 — Body data is versioned by content in the service worker
+**Decision:** body.json and body.bin.gz are precached with real revisions (`dontCacheBustURLsMatching` limited to
+Vite's hashed JS/CSS); target packs are fetched as `macro-*.bin.gz?v=<sha256 prefix>` (hashes injected at build as
+`__ASSET_HASHES__`) and cached first-use.
+**Why:** vite-plugin-pwa treats everything under `assets/` as content-hashed and gave our plain-named body files a
+null revision, so an installed app kept its first body.json forever ("update half-installed" on every launch).
+`pnpm sw-check` installs a stale build in a real browser profile, deploys the real one and checks a reopen sees it.
+**Alternatives:** hashed file names from the pipeline (would churn ASSETS.md/pre-commit checks on every rebuild);
+StaleWhileRevalidate (serves a body.json that doesn't match the code for one launch).
